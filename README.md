@@ -47,5 +47,6 @@ See [docs/DEPLOY.md](docs/DEPLOY.md). Summary: build Docker image for API, use e
 
 ## Docs
 
+- [docs/VERSION_STATE_AND_NEXT_STEPS.md](docs/VERSION_STATE_AND_NEXT_STEPS.md) – current version snapshot and recommended next steps
 - [docs/CRITICAL_INFO_FROM_VERSIONS.md](docs/CRITICAL_INFO_FROM_VERSIONS.md) – domain and API from existing versions
 - [docs/checklists/CHECKLISTS_INDEX.md](docs/checklists/CHECKLISTS_INDEX.md) – links to shared checklists (post-MVP)
