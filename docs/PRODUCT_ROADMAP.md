@@ -89,3 +89,5 @@ When you’re ready to start Phase A (or another phase), we can break that phase
 **GTM (go-to-market) version** typically adds everything that makes the product safe and usable for real users and paying customers: login and identity (Phase A), roles and permissions (Phase B), user/account settings (Phase C), admin tooling (Phase D), and optionally wallet/balance features (Phase E). It also implies running on a real server, TLS, and going through the checklists (security, production, launch).
 
 **Recommendation:** You can **call the current scope “MVP complete”** (core + multi-network) and **start on the GTM version** by kicking off Phase A (auth) and “run on server” in parallel. The MVP is done in the sense that the promised feature set (estate plans, beneficiaries, timelock policies, BTC/XMR/STX addresses) is implemented and tested; GTM is the next phase of work, not a different product.
+
+**Full GTM plan (branding, phases, checklists, industry standards):** [docs/GTM_PLAN.md](GTM_PLAN.md) – name/slogan/logo/theme, Phase 0–E breakdown, cross-cutting checklists, risk and rollback, and definition of done.

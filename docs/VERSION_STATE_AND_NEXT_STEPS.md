@@ -56,7 +56,7 @@ Frontend expects `NEXT_PUBLIC_API_URL=http://localhost:8000` (see `frontend/env.
    - Use [docs/checklists/CHECKLISTS_INDEX.md](checklists/CHECKLISTS_INDEX.md) and [DEVELOPER_CHECKLISTS_UNIVERSAL](../../Estate_Management/docs/checklists/DEVELOPER_CHECKLISTS_UNIVERSAL.md) for design/build/test/deploy sign-off before production.
 
 6. **Product readiness (login, roles, admin, wallet, account)**  
-   - Not in scope for the current MVP. When and how these get factored in and built is described in [docs/PRODUCT_ROADMAP.md](PRODUCT_ROADMAP.md) (phases A–E: auth → roles → user config → admin → wallet).
+   - Not in scope for the current MVP. Full GTM build plan (branding, phases, checklists): [docs/GTM_PLAN.md](GTM_PLAN.md). Phase overview: [docs/PRODUCT_ROADMAP.md](PRODUCT_ROADMAP.md).
 
 ---
 
