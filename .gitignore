@@ -1,0 +1,6 @@
+/target
+.env
+*.pdb
+logs/
+node_modules/
+.next/
