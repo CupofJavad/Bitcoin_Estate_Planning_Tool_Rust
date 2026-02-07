@@ -16,12 +16,11 @@ interface EstatePlanCardProps {
 export function EstatePlanCard({ estatePlan, onEdit, onDelete }: EstatePlanCardProps) {
   const router = useRouter()
   
-  const handleCopyAddress = async () => {
-    if (estatePlan.bitcoin_address) {
-      await copyToClipboard(estatePlan.bitcoin_address)
-      toast('Bitcoin address copied to clipboard', 'success')
-    }
+  const copyAddress = async (address: string, label: string) => {
+    await copyToClipboard(address)
+    toast(`${label} address copied to clipboard`, 'success')
   }
+  const hasAnyAddress = estatePlan.bitcoin_address || estatePlan.monero_address || estatePlan.stacks_address
 
   const handleViewDetails = () => {
     router.push(`/estate-plans/${estatePlan.id}`)
@@ -49,24 +48,41 @@ export function EstatePlanCard({ estatePlan, onEdit, onDelete }: EstatePlanCardP
         </span>
       </div>
 
-      {estatePlan.bitcoin_address && (
-        <div className="mb-4 p-3 bg-gray-50 rounded border border-gray-200">
-          <div className="flex items-center justify-between">
-            <div className="flex-1 min-w-0">
-              <p className="text-xs text-gray-500 mb-1">Bitcoin Address</p>
-              <p className="text-sm font-mono text-gray-900 truncate">
-                {estatePlan.bitcoin_address}
-              </p>
+      {hasAnyAddress && (
+        <div className="mb-4 p-3 bg-gray-50 rounded border border-gray-200 space-y-2">
+          {estatePlan.bitcoin_address && (
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex-1 min-w-0">
+                <p className="text-xs text-gray-500 mb-0.5">Bitcoin (BTC)</p>
+                <p className="text-sm font-mono text-gray-900 truncate">{estatePlan.bitcoin_address}</p>
+              </div>
+              <Button variant="ghost" size="icon" onClick={() => copyAddress(estatePlan.bitcoin_address!, 'Bitcoin')} className="h-8 w-8 flex-shrink-0">
+                <Copy className="h-4 w-4" />
+              </Button>
             </div>
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={handleCopyAddress}
-              className="ml-2 h-8 w-8 flex-shrink-0"
-            >
-              <Copy className="h-4 w-4" />
-            </Button>
-          </div>
+          )}
+          {estatePlan.monero_address && (
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex-1 min-w-0">
+                <p className="text-xs text-gray-500 mb-0.5">Monero (XMR)</p>
+                <p className="text-sm font-mono text-gray-900 truncate">{estatePlan.monero_address}</p>
+              </div>
+              <Button variant="ghost" size="icon" onClick={() => copyAddress(estatePlan.monero_address!, 'Monero')} className="h-8 w-8 flex-shrink-0">
+                <Copy className="h-4 w-4" />
+              </Button>
+            </div>
+          )}
+          {estatePlan.stacks_address && (
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex-1 min-w-0">
+                <p className="text-xs text-gray-500 mb-0.5">Stacks (STX)</p>
+                <p className="text-sm font-mono text-gray-900 truncate">{estatePlan.stacks_address}</p>
+              </div>
+              <Button variant="ghost" size="icon" onClick={() => copyAddress(estatePlan.stacks_address!, 'Stacks')} className="h-8 w-8 flex-shrink-0">
+                <Copy className="h-4 w-4" />
+              </Button>
+            </div>
+          )}
         </div>
       )}
 

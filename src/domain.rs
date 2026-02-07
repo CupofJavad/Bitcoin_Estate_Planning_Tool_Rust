@@ -9,6 +9,8 @@ pub struct EstatePlan {
     pub name: String,
     pub description: Option<String>,
     pub bitcoin_address: Option<String>,
+    pub monero_address: Option<String>,
+    pub stacks_address: Option<String>,
     pub is_active: bool,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
@@ -21,6 +23,10 @@ pub struct CreateEstatePlan {
     pub description: Option<String>,
     #[serde(default)]
     pub bitcoin_address: Option<String>,
+    #[serde(default)]
+    pub monero_address: Option<String>,
+    #[serde(default)]
+    pub stacks_address: Option<String>,
     #[serde(default = "default_true")]
     pub is_active: bool,
 }
@@ -35,6 +41,8 @@ pub struct UpdateEstatePlan {
     pub name: Option<String>,
     pub description: Option<String>,
     pub bitcoin_address: Option<String>,
+    pub monero_address: Option<String>,
+    pub stacks_address: Option<String>,
     pub is_active: Option<bool>,
 }
 
@@ -45,6 +53,8 @@ pub struct Beneficiary {
     pub name: String,
     pub email: Option<String>,
     pub bitcoin_address: Option<String>,
+    pub monero_address: Option<String>,
+    pub stacks_address: Option<String>,
     pub allocation_percentage: f64,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
@@ -58,6 +68,10 @@ pub struct CreateBeneficiary {
     pub email: Option<String>,
     #[serde(default)]
     pub bitcoin_address: Option<String>,
+    #[serde(default)]
+    pub monero_address: Option<String>,
+    #[serde(default)]
+    pub stacks_address: Option<String>,
     pub allocation_percentage: f64,
 }
 
@@ -67,6 +81,8 @@ pub struct UpdateBeneficiary {
     pub name: Option<String>,
     pub email: Option<String>,
     pub bitcoin_address: Option<String>,
+    pub monero_address: Option<String>,
+    pub stacks_address: Option<String>,
     pub allocation_percentage: Option<f64>,
 }
 

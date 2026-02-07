@@ -27,6 +27,8 @@ export interface EstatePlan {
   name: string
   description: string | null
   bitcoin_address: string | null
+  monero_address: string | null
+  stacks_address: string | null
   is_active: boolean
   created_at: string
   updated_at: string
@@ -43,6 +45,8 @@ export interface Beneficiary {
   name: string
   email: string | null
   bitcoin_address: string | null
+  monero_address: string | null
+  stacks_address: string | null
   allocation_percentage: number
   created_at: string
   updated_at: string

@@ -10,9 +10,9 @@
 | Component        | Version / state |
 |-----------------|------------------|
 | **App version** | `0.1.0` (`/version` → `app_version`, `migration_version`) |
-| **Migration**   | `1` (schema: estate_plans, beneficiaries, timelock_policies) |
-| **API**         | Axum on `:8000`; health, version, full CRUD; request logging + audit events |
-| **Frontend**    | Next.js on `:3000`; estate plans list/create, beneficiaries, timelock policies; uses Rust API |
+| **Migration**   | `2` (estate_plans, beneficiaries, timelock_policies; + monero_address, stacks_address on plans & beneficiaries) |
+| **API**         | Axum on `:8000`; health, version, full CRUD; request logging + audit events; multi-network addresses (BTC, XMR, STX) |
+| **Frontend**    | Next.js on `:3000`; estate plans list/create, beneficiaries, timelock policies; BTC/XMR/STX address fields and copy |
 | **Database**    | Postgres 15 (Docker); `docker compose -f infra/docker-compose.yml up -d` |
 | **Tests**       | 6 integration tests (health, version, estate CRUD, allocation exceeded, timelock CRUD, 404); skip cleanly when DB unavailable |
 | **Logging**     | `logs/estate_planning_rust.log` + stdout; request IDs; audit events for create/update/delete |
@@ -54,6 +54,9 @@ Frontend expects `NEXT_PUBLIC_API_URL=http://localhost:8000` (see `frontend/env.
 
 5. **Checklists**  
    - Use [docs/checklists/CHECKLISTS_INDEX.md](checklists/CHECKLISTS_INDEX.md) and [DEVELOPER_CHECKLISTS_UNIVERSAL](../../Estate_Management/docs/checklists/DEVELOPER_CHECKLISTS_UNIVERSAL.md) for design/build/test/deploy sign-off before production.
+
+6. **Product readiness (login, roles, admin, wallet, account)**  
+   - Not in scope for the current MVP. When and how these get factored in and built is described in [docs/PRODUCT_ROADMAP.md](PRODUCT_ROADMAP.md) (phases A–E: auth → roles → user config → admin → wallet).
 
 ---
 

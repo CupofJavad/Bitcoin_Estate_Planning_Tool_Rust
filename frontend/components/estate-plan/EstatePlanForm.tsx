@@ -9,6 +9,8 @@ interface EstatePlanFormData {
   name: string
   description: string
   bitcoin_address: string
+  monero_address: string
+  stacks_address: string
   is_active: boolean
 }
 
@@ -25,6 +27,8 @@ export function EstatePlanForm({ estatePlan, onSubmit, onCancel, isLoading }: Es
       name: estatePlan?.name || '',
       description: estatePlan?.description || '',
       bitcoin_address: estatePlan?.bitcoin_address || '',
+      monero_address: estatePlan?.monero_address || '',
+      stacks_address: estatePlan?.stacks_address || '',
       is_active: estatePlan?.is_active ?? true,
     },
   })
@@ -35,6 +39,8 @@ export function EstatePlanForm({ estatePlan, onSubmit, onCancel, isLoading }: Es
         name: estatePlan.name,
         description: estatePlan.description || '',
         bitcoin_address: estatePlan.bitcoin_address || '',
+        monero_address: estatePlan.monero_address || '',
+        stacks_address: estatePlan.stacks_address || '',
         is_active: estatePlan.is_active,
       })
     }
@@ -73,19 +79,45 @@ export function EstatePlanForm({ estatePlan, onSubmit, onCancel, isLoading }: Es
         />
       </div>
 
-      <div>
-        <label htmlFor="bitcoin_address" className="block text-sm font-medium text-gray-700 mb-1">
-          Bitcoin Address
-        </label>
-        <input
-          id="bitcoin_address"
-          type="text"
-          {...register('bitcoin_address')}
-          placeholder="bc1q..."
-          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono text-sm"
-        />
-        <p className="mt-1 text-xs text-gray-500">
-          Enter a Bitcoin address for this estate plan
+      <div className="space-y-3">
+        <div>
+          <label htmlFor="bitcoin_address" className="block text-sm font-medium text-gray-700 mb-1">
+            Bitcoin (BTC) Address
+          </label>
+          <input
+            id="bitcoin_address"
+            type="text"
+            {...register('bitcoin_address')}
+            placeholder="bc1q... or 1..."
+            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono text-sm"
+          />
+        </div>
+        <div>
+          <label htmlFor="monero_address" className="block text-sm font-medium text-gray-700 mb-1">
+            Monero (XMR) Address
+          </label>
+          <input
+            id="monero_address"
+            type="text"
+            {...register('monero_address')}
+            placeholder="4... or 8..."
+            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono text-sm"
+          />
+        </div>
+        <div>
+          <label htmlFor="stacks_address" className="block text-sm font-medium text-gray-700 mb-1">
+            Stacks (STX) Address
+          </label>
+          <input
+            id="stacks_address"
+            type="text"
+            {...register('stacks_address')}
+            placeholder="SP... or ST..."
+            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono text-sm"
+          />
+        </div>
+        <p className="text-xs text-gray-500">
+          Optional: enter payout addresses for each network (BTC, XMR, STX).
         </p>
       </div>
 

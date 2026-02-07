@@ -13,12 +13,11 @@ interface BeneficiaryCardProps {
 }
 
 export function BeneficiaryCard({ beneficiary, onEdit, onDelete }: BeneficiaryCardProps) {
-  const handleCopyAddress = async () => {
-    if (beneficiary.bitcoin_address) {
-      await copyToClipboard(beneficiary.bitcoin_address)
-      toast('Bitcoin address copied to clipboard', 'success')
-    }
+  const copyAddress = async (address: string, label: string) => {
+    await copyToClipboard(address)
+    toast(`${label} address copied to clipboard`, 'success')
   }
+  const hasAnyAddress = beneficiary.bitcoin_address || beneficiary.monero_address || beneficiary.stacks_address
 
   return (
     <div className="bg-white border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow">
@@ -47,24 +46,41 @@ export function BeneficiaryCard({ beneficiary, onEdit, onDelete }: BeneficiaryCa
         </div>
       </div>
 
-      {beneficiary.bitcoin_address && (
-        <div className="mb-3 p-2 bg-gray-50 rounded border border-gray-200">
-          <div className="flex items-center justify-between">
-            <div className="flex-1 min-w-0">
-              <p className="text-xs text-gray-500 mb-1">Bitcoin Address</p>
-              <p className="text-xs font-mono text-gray-900 truncate">
-                {beneficiary.bitcoin_address}
-              </p>
+      {hasAnyAddress && (
+        <div className="mb-3 p-2 bg-gray-50 rounded border border-gray-200 space-y-1.5">
+          {beneficiary.bitcoin_address && (
+            <div className="flex items-center justify-between gap-1">
+              <div className="flex-1 min-w-0">
+                <p className="text-xs text-gray-500 mb-0.5">Bitcoin (BTC)</p>
+                <p className="text-xs font-mono text-gray-900 truncate">{beneficiary.bitcoin_address}</p>
+              </div>
+              <Button variant="ghost" size="icon" onClick={() => copyAddress(beneficiary.bitcoin_address!, 'Bitcoin')} className="h-7 w-7 flex-shrink-0">
+                <Copy className="h-3 w-3" />
+              </Button>
             </div>
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={handleCopyAddress}
-              className="ml-2 h-7 w-7 flex-shrink-0"
-            >
-              <Copy className="h-3 w-3" />
-            </Button>
-          </div>
+          )}
+          {beneficiary.monero_address && (
+            <div className="flex items-center justify-between gap-1">
+              <div className="flex-1 min-w-0">
+                <p className="text-xs text-gray-500 mb-0.5">Monero (XMR)</p>
+                <p className="text-xs font-mono text-gray-900 truncate">{beneficiary.monero_address}</p>
+              </div>
+              <Button variant="ghost" size="icon" onClick={() => copyAddress(beneficiary.monero_address!, 'Monero')} className="h-7 w-7 flex-shrink-0">
+                <Copy className="h-3 w-3" />
+              </Button>
+            </div>
+          )}
+          {beneficiary.stacks_address && (
+            <div className="flex items-center justify-between gap-1">
+              <div className="flex-1 min-w-0">
+                <p className="text-xs text-gray-500 mb-0.5">Stacks (STX)</p>
+                <p className="text-xs font-mono text-gray-900 truncate">{beneficiary.stacks_address}</p>
+              </div>
+              <Button variant="ghost" size="icon" onClick={() => copyAddress(beneficiary.stacks_address!, 'Stacks')} className="h-7 w-7 flex-shrink-0">
+                <Copy className="h-3 w-3" />
+              </Button>
+            </div>
+          )}
         </div>
       )}
 

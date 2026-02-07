@@ -28,7 +28,7 @@ export function EstatePlanList({ estatePlans, onCreate, onEdit, onDelete }: Esta
         <div>
           <h2 className="text-2xl font-bold text-gray-900">Estate Plans</h2>
           <p className="text-sm text-gray-600 mt-1">
-            Manage your Bitcoin estate planning configurations
+            BTC, XMR & STX plans with beneficiaries and timelock policies
           </p>
         </div>
         <Button onClick={onCreate}>

@@ -129,6 +129,8 @@ async fn estate_plans_crud() {
         "name": "Test Plan Integration",
         "description": "For integration test",
         "bitcoin_address": null,
+        "monero_address": null,
+        "stacks_address": null,
         "is_active": true
     });
     let res = client
@@ -242,6 +244,15 @@ async fn beneficiaries_allocation_exceeded() {
         body.contains("100") || body.contains("allocation"),
         "error message should mention allocation"
     );
+    // RFC 7807 problem details: response should be JSON with title, detail, status
+    let problem: serde_json::Value =
+        serde_json::from_str(&body).expect("error body should be JSON");
+    assert_eq!(problem["status"], 422);
+    assert!(problem["detail"]
+        .as_str()
+        .unwrap()
+        .to_lowercase()
+        .contains("100"));
 
     // Cleanup: delete plan (cascades or we delete beneficiaries first depending on schema)
     let _ = client
@@ -337,4 +348,11 @@ async fn not_found_returns_404() {
         .await
         .expect("request");
     assert_eq!(res.status(), 404);
+    // RFC 7807: error body must be JSON with title, detail, status
+    let body = res.text().await.expect("body");
+    let problem: serde_json::Value =
+        serde_json::from_str(&body).expect("404 body should be problem JSON");
+    assert_eq!(problem["status"], 404);
+    assert!(problem.get("title").and_then(|v| v.as_str()).is_some());
+    assert!(problem.get("detail").and_then(|v| v.as_str()).is_some());
 }

@@ -3,8 +3,8 @@ import './globals.css'
 import { GlobalToasts } from '@/components/GlobalToasts'
 
 export const metadata: Metadata = {
-  title: 'Bitcoin Estate Planning Platform',
-  description: 'Bitcoin-native estate planning with timelock policies and beneficiary management',
+  title: 'Multi-Chain Estate Planning',
+  description: 'Estate planning for BTC, XMR, and STX: beneficiaries, timelock policies, and payout addresses',
 }
 
 export default function RootLayout({

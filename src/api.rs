@@ -81,7 +81,7 @@ async fn version(State(pool): State<AppState>) -> Json<VersionResponse> {
 async fn list_estate_plans(
     State(pool): State<AppState>,
 ) -> Result<Json<Vec<EstatePlan>>, ApiError> {
-    let rows = sqlx::query_as::<_, EstatePlan>("SELECT id, user_id, name, description, bitcoin_address, is_active, created_at, updated_at FROM estate_plans ORDER BY id")
+    let rows = sqlx::query_as::<_, EstatePlan>("SELECT id, user_id, name, description, bitcoin_address, monero_address, stacks_address, is_active, created_at, updated_at FROM estate_plans ORDER BY id")
         .fetch_all(pool.as_ref())
         .await?;
     Ok(Json(rows))
@@ -92,7 +92,7 @@ async fn get_estate_plan(
     Path(id): Path<i32>,
 ) -> Result<Json<EstatePlanWithRelations>, ApiError> {
     let plan = sqlx::query_as::<_, EstatePlan>(
-        "SELECT id, user_id, name, description, bitcoin_address, is_active, created_at, updated_at FROM estate_plans WHERE id = $1",
+        "SELECT id, user_id, name, description, bitcoin_address, monero_address, stacks_address, is_active, created_at, updated_at FROM estate_plans WHERE id = $1",
     )
     .bind(id)
     .fetch_optional(pool.as_ref())
@@ -100,7 +100,7 @@ async fn get_estate_plan(
     .ok_or(ApiError::NotFound)?;
 
     let beneficiaries = sqlx::query_as::<_, Beneficiary>(
-        "SELECT id, estate_plan_id, name, email, bitcoin_address, allocation_percentage::float8 AS allocation_percentage, created_at, updated_at FROM beneficiaries WHERE estate_plan_id = $1 ORDER BY id",
+        "SELECT id, estate_plan_id, name, email, bitcoin_address, monero_address, stacks_address, allocation_percentage::float8 AS allocation_percentage, created_at, updated_at FROM beneficiaries WHERE estate_plan_id = $1 ORDER BY id",
     )
     .bind(id)
     .fetch_all(pool.as_ref())
@@ -125,11 +125,13 @@ async fn create_estate_plan(
     Json(body): Json<CreateEstatePlan>,
 ) -> Result<(StatusCode, Json<EstatePlan>), ApiError> {
     let row = sqlx::query_as::<_, EstatePlan>(
-        "INSERT INTO estate_plans (user_id, name, description, bitcoin_address, is_active) VALUES (0, $1, $2, $3, $4) RETURNING id, user_id, name, description, bitcoin_address, is_active, created_at, updated_at",
+        "INSERT INTO estate_plans (user_id, name, description, bitcoin_address, monero_address, stacks_address, is_active) VALUES (0, $1, $2, $3, $4, $5, $6) RETURNING id, user_id, name, description, bitcoin_address, monero_address, stacks_address, is_active, created_at, updated_at",
     )
     .bind(&body.name)
     .bind(&body.description)
     .bind(&body.bitcoin_address)
+    .bind(&body.monero_address)
+    .bind(&body.stacks_address)
     .bind(body.is_active)
     .fetch_one(pool.as_ref())
     .await?;
@@ -145,7 +147,7 @@ async fn update_estate_plan(
     Path(id): Path<i32>,
     Json(body): Json<UpdateEstatePlan>,
 ) -> Result<Json<EstatePlan>, ApiError> {
-    let existing = sqlx::query_as::<_, EstatePlan>("SELECT id, user_id, name, description, bitcoin_address, is_active, created_at, updated_at FROM estate_plans WHERE id = $1")
+    let existing = sqlx::query_as::<_, EstatePlan>("SELECT id, user_id, name, description, bitcoin_address, monero_address, stacks_address, is_active, created_at, updated_at FROM estate_plans WHERE id = $1")
         .bind(id)
         .fetch_optional(pool.as_ref())
         .await?
@@ -154,14 +156,18 @@ async fn update_estate_plan(
     let name = body.name.as_deref().unwrap_or(&existing.name);
     let description = body.description.or(existing.description);
     let bitcoin_address = body.bitcoin_address.or(existing.bitcoin_address);
+    let monero_address = body.monero_address.or(existing.monero_address);
+    let stacks_address = body.stacks_address.or(existing.stacks_address);
     let is_active = body.is_active.unwrap_or(existing.is_active);
 
     let row = sqlx::query_as::<_, EstatePlan>(
-        "UPDATE estate_plans SET name = $1, description = $2, bitcoin_address = $3, is_active = $4 WHERE id = $5 RETURNING id, user_id, name, description, bitcoin_address, is_active, created_at, updated_at",
+        "UPDATE estate_plans SET name = $1, description = $2, bitcoin_address = $3, monero_address = $4, stacks_address = $5, is_active = $6 WHERE id = $7 RETURNING id, user_id, name, description, bitcoin_address, monero_address, stacks_address, is_active, created_at, updated_at",
     )
     .bind(name)
     .bind(&description)
     .bind(&bitcoin_address)
+    .bind(&monero_address)
+    .bind(&stacks_address)
     .bind(is_active)
     .bind(id)
     .fetch_one(pool.as_ref())
@@ -198,14 +204,14 @@ async fn list_beneficiaries(
 ) -> Result<Json<Vec<Beneficiary>>, ApiError> {
     let rows = if let Some(ep_id) = filter.estate_plan_id {
         sqlx::query_as::<_, Beneficiary>(
-            "SELECT id, estate_plan_id, name, email, bitcoin_address, allocation_percentage::float8 AS allocation_percentage, created_at, updated_at FROM beneficiaries WHERE estate_plan_id = $1 ORDER BY id",
+            "SELECT id, estate_plan_id, name, email, bitcoin_address, monero_address, stacks_address, allocation_percentage::float8 AS allocation_percentage, created_at, updated_at FROM beneficiaries WHERE estate_plan_id = $1 ORDER BY id",
         )
         .bind(ep_id)
         .fetch_all(pool.as_ref())
         .await?
     } else {
         sqlx::query_as::<_, Beneficiary>(
-            "SELECT id, estate_plan_id, name, email, bitcoin_address, allocation_percentage::float8 AS allocation_percentage, created_at, updated_at FROM beneficiaries ORDER BY id",
+            "SELECT id, estate_plan_id, name, email, bitcoin_address, monero_address, stacks_address, allocation_percentage::float8 AS allocation_percentage, created_at, updated_at FROM beneficiaries ORDER BY id",
         )
         .fetch_all(pool.as_ref())
         .await?
@@ -218,7 +224,7 @@ async fn get_beneficiary(
     Path(id): Path<i32>,
 ) -> Result<Json<Beneficiary>, ApiError> {
     let row = sqlx::query_as::<_, Beneficiary>(
-        "SELECT id, estate_plan_id, name, email, bitcoin_address, allocation_percentage::float8 AS allocation_percentage, created_at, updated_at FROM beneficiaries WHERE id = $1",
+        "SELECT id, estate_plan_id, name, email, bitcoin_address, monero_address, stacks_address, allocation_percentage::float8 AS allocation_percentage, created_at, updated_at FROM beneficiaries WHERE id = $1",
     )
     .bind(id)
     .fetch_optional(pool.as_ref())
@@ -270,12 +276,14 @@ async fn create_beneficiary(
     )
     .await?;
     let row = sqlx::query_as::<_, Beneficiary>(
-        "INSERT INTO beneficiaries (estate_plan_id, name, email, bitcoin_address, allocation_percentage) VALUES ($1, $2, $3, $4, $5) RETURNING id, estate_plan_id, name, email, bitcoin_address, allocation_percentage::float8 AS allocation_percentage, created_at, updated_at",
+        "INSERT INTO beneficiaries (estate_plan_id, name, email, bitcoin_address, monero_address, stacks_address, allocation_percentage) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id, estate_plan_id, name, email, bitcoin_address, monero_address, stacks_address, allocation_percentage::float8 AS allocation_percentage, created_at, updated_at",
     )
     .bind(body.estate_plan_id)
     .bind(&body.name)
     .bind(&body.email)
     .bind(&body.bitcoin_address)
+    .bind(&body.monero_address)
+    .bind(&body.stacks_address)
     .bind(body.allocation_percentage)
     .fetch_one(pool.as_ref())
     .await?;
@@ -292,7 +300,7 @@ async fn update_beneficiary(
     Json(body): Json<UpdateBeneficiary>,
 ) -> Result<Json<Beneficiary>, ApiError> {
     let existing = sqlx::query_as::<_, Beneficiary>(
-        "SELECT id, estate_plan_id, name, email, bitcoin_address, allocation_percentage::float8 AS allocation_percentage, created_at, updated_at FROM beneficiaries WHERE id = $1",
+        "SELECT id, estate_plan_id, name, email, bitcoin_address, monero_address, stacks_address, allocation_percentage::float8 AS allocation_percentage, created_at, updated_at FROM beneficiaries WHERE id = $1",
     )
     .bind(id)
     .fetch_optional(pool.as_ref())
@@ -306,16 +314,20 @@ async fn update_beneficiary(
     let name = body.name.as_deref().unwrap_or(&existing.name);
     let email = body.email.or(existing.email);
     let bitcoin_address = body.bitcoin_address.or(existing.bitcoin_address);
+    let monero_address = body.monero_address.or(existing.monero_address);
+    let stacks_address = body.stacks_address.or(existing.stacks_address);
     let allocation_percentage = body
         .allocation_percentage
         .unwrap_or(existing.allocation_percentage);
 
     let row = sqlx::query_as::<_, Beneficiary>(
-        "UPDATE beneficiaries SET name = $1, email = $2, bitcoin_address = $3, allocation_percentage = $4 WHERE id = $5 RETURNING id, estate_plan_id, name, email, bitcoin_address, allocation_percentage::float8 AS allocation_percentage, created_at, updated_at",
+        "UPDATE beneficiaries SET name = $1, email = $2, bitcoin_address = $3, monero_address = $4, stacks_address = $5, allocation_percentage = $6 WHERE id = $7 RETURNING id, estate_plan_id, name, email, bitcoin_address, monero_address, stacks_address, allocation_percentage::float8 AS allocation_percentage, created_at, updated_at",
     )
     .bind(name)
     .bind(&email)
     .bind(&bitcoin_address)
+    .bind(&monero_address)
+    .bind(&stacks_address)
     .bind(allocation_percentage)
     .bind(id)
     .fetch_one(pool.as_ref())
@@ -452,7 +464,17 @@ async fn delete_timelock_policy(
     Ok(StatusCode::NO_CONTENT)
 }
 
-// ----- Error -----
+// ----- Error (RFC 7807–style problem details) -----
+
+/// Minimal RFC 7807 Problem Details for HTTP APIs (machine-readable errors).
+#[derive(Debug, serde::Serialize)]
+pub struct ProblemDetails {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub r#type: Option<String>,
+    pub title: String,
+    pub detail: String,
+    pub status: u16,
+}
 
 #[derive(Debug)]
 pub enum ApiError {
@@ -469,17 +491,47 @@ impl From<sqlx::Error> for ApiError {
 
 impl IntoResponse for ApiError {
     fn into_response(self) -> axum::response::Response {
-        let (status, body) = match self {
-            ApiError::NotFound => (StatusCode::NOT_FOUND, "Not found"),
+        let (status, problem) = match &self {
+            ApiError::NotFound => (
+                StatusCode::NOT_FOUND,
+                ProblemDetails {
+                    r#type: Some("https://api.estateplanning.dev/problems/not-found".to_string()),
+                    title: "Not Found".to_string(),
+                    detail: "Not found".to_string(),
+                    status: 404,
+                },
+            ),
             ApiError::AllocationExceeded => (
                 StatusCode::UNPROCESSABLE_ENTITY,
-                "Beneficiary allocation total cannot exceed 100%",
+                ProblemDetails {
+                    r#type: Some(
+                        "https://api.estateplanning.dev/problems/allocation-exceeded".to_string(),
+                    ),
+                    title: "Allocation Exceeded".to_string(),
+                    detail: "Beneficiary allocation total cannot exceed 100%".to_string(),
+                    status: 422,
+                },
             ),
             ApiError::Db(e) => {
                 tracing::error!(error = %e, "DB error");
-                (StatusCode::INTERNAL_SERVER_ERROR, "Internal server error")
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    ProblemDetails {
+                        r#type: Some(
+                            "https://api.estateplanning.dev/problems/internal".to_string(),
+                        ),
+                        title: "Internal Server Error".to_string(),
+                        detail: "Internal server error".to_string(),
+                        status: 500,
+                    },
+                )
             }
         };
-        (status, body).into_response()
+        let mut res = (status, Json(problem)).into_response();
+        res.headers_mut().insert(
+            axum::http::header::CONTENT_TYPE,
+            axum::http::HeaderValue::from_static("application/problem+json"),
+        );
+        res
     }
 }

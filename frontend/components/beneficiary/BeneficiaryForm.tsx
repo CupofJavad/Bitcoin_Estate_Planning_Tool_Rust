@@ -9,6 +9,8 @@ interface BeneficiaryFormData {
   name: string
   email: string
   bitcoin_address: string
+  monero_address: string
+  stacks_address: string
   allocation_percentage: number
 }
 
@@ -34,6 +36,8 @@ export function BeneficiaryForm({
       name: beneficiary?.name || '',
       email: beneficiary?.email || '',
       bitcoin_address: beneficiary?.bitcoin_address || '',
+      monero_address: beneficiary?.monero_address || '',
+      stacks_address: beneficiary?.stacks_address || '',
       allocation_percentage: beneficiary?.allocation_percentage || 0,
     },
   })
@@ -48,6 +52,8 @@ export function BeneficiaryForm({
         name: beneficiary.name,
         email: beneficiary.email || '',
         bitcoin_address: beneficiary.bitcoin_address || '',
+        monero_address: beneficiary.monero_address || '',
+        stacks_address: beneficiary.stacks_address || '',
         allocation_percentage: beneficiary.allocation_percentage,
       })
     }
@@ -100,17 +106,43 @@ export function BeneficiaryForm({
         )}
       </div>
 
-      <div>
-        <label htmlFor="bitcoin_address" className="block text-sm font-medium text-gray-700 mb-1">
-          Bitcoin Address
-        </label>
-        <input
-          id="bitcoin_address"
-          type="text"
-          {...register('bitcoin_address')}
-          placeholder="bc1q..."
-          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono text-sm"
-        />
+      <div className="space-y-2">
+        <div>
+          <label htmlFor="bitcoin_address" className="block text-sm font-medium text-gray-700 mb-1">
+            Bitcoin (BTC) Address
+          </label>
+          <input
+            id="bitcoin_address"
+            type="text"
+            {...register('bitcoin_address')}
+            placeholder="bc1q... or 1..."
+            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono text-sm"
+          />
+        </div>
+        <div>
+          <label htmlFor="monero_address" className="block text-sm font-medium text-gray-700 mb-1">
+            Monero (XMR) Address
+          </label>
+          <input
+            id="monero_address"
+            type="text"
+            {...register('monero_address')}
+            placeholder="4... or 8..."
+            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono text-sm"
+          />
+        </div>
+        <div>
+          <label htmlFor="stacks_address" className="block text-sm font-medium text-gray-700 mb-1">
+            Stacks (STX) Address
+          </label>
+          <input
+            id="stacks_address"
+            type="text"
+            {...register('stacks_address')}
+            placeholder="SP... or ST..."
+            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono text-sm"
+          />
+        </div>
       </div>
 
       <div>

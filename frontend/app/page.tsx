@@ -60,6 +60,8 @@ export default function Home() {
     name: string
     description: string
     bitcoin_address: string
+    monero_address: string
+    stacks_address: string
     is_active: boolean
   }) => {
     try {
@@ -108,9 +110,9 @@ export default function Home() {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Header */}
         <div className="mb-8">
-          <h1 className="text-3xl font-bold text-gray-900">Bitcoin Estate Planning Platform</h1>
+          <h1 className="text-3xl font-bold text-gray-900">Multi-Chain Estate Planning</h1>
           <p className="text-gray-600 mt-2">
-            Manage your Bitcoin estate plans, beneficiaries, and timelock policies
+            Estate plans for Bitcoin (BTC), Monero (XMR), and Stacks (STX)—beneficiaries, timelock policies, and payout addresses
           </p>
         </div>
 
