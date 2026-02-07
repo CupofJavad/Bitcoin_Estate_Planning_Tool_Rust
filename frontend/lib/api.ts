@@ -6,6 +6,21 @@
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
 const BASE_URL = `${API_URL}/api/v1`
 
+/** Throw with server message (Rust API returns plain text or JSON detail). */
+async function throwApiError(res: Response, fallback: string): Promise<never> {
+  const text = await res.text()
+  let message = fallback
+  if (text) {
+    try {
+      const j = JSON.parse(text)
+      if (typeof j.detail === 'string') message = j.detail
+    } catch {
+      message = text
+    }
+  }
+  throw new Error(message)
+}
+
 export interface EstatePlan {
   id: number
   user_id: number
@@ -53,10 +68,7 @@ export const estatePlansApi = {
         ? `${BASE_URL}/estate-plans?user_id=${user_id}`
         : `${BASE_URL}/estate-plans`
       const res = await fetch(url)
-      if (!res.ok) {
-        const error = await res.json().catch(() => ({ detail: `Failed to fetch estate plans: ${res.status} ${res.statusText}` }))
-        throw new Error(error.detail || 'Failed to fetch estate plans')
-      }
+      if (!res.ok) await throwApiError(res, 'Failed to fetch estate plans')
       return res.json()
     } catch (error) {
       if (error instanceof TypeError && error.message === 'Failed to fetch') {
@@ -69,10 +81,7 @@ export const estatePlansApi = {
   get: async (id: number): Promise<EstatePlanWithRelations> => {
     try {
       const res = await fetch(`${BASE_URL}/estate-plans/${id}`)
-      if (!res.ok) {
-        const error = await res.json().catch(() => ({ detail: `Failed to fetch estate plan: ${res.status} ${res.statusText}` }))
-        throw new Error(error.detail || 'Failed to fetch estate plan')
-      }
+      if (!res.ok) await throwApiError(res, 'Failed to fetch estate plan')
       return res.json()
     } catch (error) {
       if (error instanceof TypeError && error.message === 'Failed to fetch') {
@@ -88,10 +97,7 @@ export const estatePlansApi = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data),
     })
-    if (!res.ok) {
-      const error = await res.json().catch(() => ({ detail: 'Failed to create estate plan' }))
-      throw new Error(error.detail || 'Failed to create estate plan')
-    }
+    if (!res.ok) await throwApiError(res, 'Failed to create estate plan')
     return res.json()
   },
 
@@ -101,18 +107,13 @@ export const estatePlansApi = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data),
     })
-    if (!res.ok) {
-      const error = await res.json().catch(() => ({ detail: 'Failed to update estate plan' }))
-      throw new Error(error.detail || 'Failed to update estate plan')
-    }
+    if (!res.ok) await throwApiError(res, 'Failed to update estate plan')
     return res.json()
   },
 
   delete: async (id: number): Promise<void> => {
-    const res = await fetch(`${BASE_URL}/estate-plans/${id}`, {
-      method: 'DELETE',
-    })
-    if (!res.ok) throw new Error('Failed to delete estate plan')
+    const res = await fetch(`${BASE_URL}/estate-plans/${id}`, { method: 'DELETE' })
+    if (!res.ok) await throwApiError(res, 'Failed to delete estate plan')
   },
 }
 
@@ -123,13 +124,13 @@ export const beneficiariesApi = {
       ? `${BASE_URL}/beneficiaries?estate_plan_id=${estate_plan_id}`
       : `${BASE_URL}/beneficiaries`
     const res = await fetch(url)
-    if (!res.ok) throw new Error('Failed to fetch beneficiaries')
+    if (!res.ok) await throwApiError(res, 'Failed to fetch beneficiaries')
     return res.json()
   },
 
   get: async (id: number): Promise<Beneficiary> => {
     const res = await fetch(`${BASE_URL}/beneficiaries/${id}`)
-    if (!res.ok) throw new Error('Failed to fetch beneficiary')
+    if (!res.ok) await throwApiError(res, 'Failed to fetch beneficiary')
     return res.json()
   },
 
@@ -139,10 +140,7 @@ export const beneficiariesApi = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data),
     })
-    if (!res.ok) {
-      const error = await res.json().catch(() => ({ detail: 'Failed to create beneficiary' }))
-      throw new Error(error.detail || 'Failed to create beneficiary')
-    }
+    if (!res.ok) await throwApiError(res, 'Failed to create beneficiary')
     return res.json()
   },
 
@@ -152,18 +150,13 @@ export const beneficiariesApi = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data),
     })
-    if (!res.ok) {
-      const error = await res.json().catch(() => ({ detail: 'Failed to update beneficiary' }))
-      throw new Error(error.detail || 'Failed to update beneficiary')
-    }
+    if (!res.ok) await throwApiError(res, 'Failed to update beneficiary')
     return res.json()
   },
 
   delete: async (id: number): Promise<void> => {
-    const res = await fetch(`${BASE_URL}/beneficiaries/${id}`, {
-      method: 'DELETE',
-    })
-    if (!res.ok) throw new Error('Failed to delete beneficiary')
+    const res = await fetch(`${BASE_URL}/beneficiaries/${id}`, { method: 'DELETE' })
+    if (!res.ok) await throwApiError(res, 'Failed to delete beneficiary')
   },
 }
 
@@ -174,13 +167,13 @@ export const timelockPoliciesApi = {
       ? `${BASE_URL}/timelock-policies?estate_plan_id=${estate_plan_id}`
       : `${BASE_URL}/timelock-policies`
     const res = await fetch(url)
-    if (!res.ok) throw new Error('Failed to fetch timelock policies')
+    if (!res.ok) await throwApiError(res, 'Failed to fetch timelock policies')
     return res.json()
   },
 
   get: async (id: number): Promise<TimelockPolicy> => {
     const res = await fetch(`${BASE_URL}/timelock-policies/${id}`)
-    if (!res.ok) throw new Error('Failed to fetch timelock policy')
+    if (!res.ok) await throwApiError(res, 'Failed to fetch timelock policy')
     return res.json()
   },
 
@@ -190,10 +183,7 @@ export const timelockPoliciesApi = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data),
     })
-    if (!res.ok) {
-      const error = await res.json().catch(() => ({ detail: 'Failed to create timelock policy' }))
-      throw new Error(error.detail || 'Failed to create timelock policy')
-    }
+    if (!res.ok) await throwApiError(res, 'Failed to create timelock policy')
     return res.json()
   },
 
@@ -203,18 +193,13 @@ export const timelockPoliciesApi = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data),
     })
-    if (!res.ok) {
-      const error = await res.json().catch(() => ({ detail: 'Failed to update timelock policy' }))
-      throw new Error(error.detail || 'Failed to update timelock policy')
-    }
+    if (!res.ok) await throwApiError(res, 'Failed to update timelock policy')
     return res.json()
   },
 
   delete: async (id: number): Promise<void> => {
-    const res = await fetch(`${BASE_URL}/timelock-policies/${id}`, {
-      method: 'DELETE',
-    })
-    if (!res.ok) throw new Error('Failed to delete timelock policy')
+    const res = await fetch(`${BASE_URL}/timelock-policies/${id}`, { method: 'DELETE' })
+    if (!res.ok) await throwApiError(res, 'Failed to delete timelock policy')
   },
 }
 

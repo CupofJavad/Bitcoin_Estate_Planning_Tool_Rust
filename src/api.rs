@@ -19,7 +19,10 @@ pub fn router(pool: PgPool) -> Router {
     Router::new()
         .route("/health", get(health))
         .route("/version", get(version))
-        .route("/api/v1/estate-plans", get(list_estate_plans).post(create_estate_plan))
+        .route(
+            "/api/v1/estate-plans",
+            get(list_estate_plans).post(create_estate_plan),
+        )
         .route(
             "/api/v1/estate-plans/:id",
             get(get_estate_plan)
@@ -60,11 +63,13 @@ struct VersionResponse {
 }
 
 async fn version(State(pool): State<AppState>) -> Json<VersionResponse> {
-    let migration_version = sqlx::query_scalar::<_, i64>("SELECT version FROM _sqlx_migrations ORDER BY version DESC LIMIT 1")
-        .fetch_optional(pool.as_ref())
-        .await
-        .ok()
-        .flatten();
+    let migration_version = sqlx::query_scalar::<_, i64>(
+        "SELECT version FROM _sqlx_migrations ORDER BY version DESC LIMIT 1",
+    )
+    .fetch_optional(pool.as_ref())
+    .await
+    .ok()
+    .flatten();
     Json(VersionResponse {
         app_version: env!("CARGO_PKG_VERSION"),
         migration_version,
@@ -73,7 +78,9 @@ async fn version(State(pool): State<AppState>) -> Json<VersionResponse> {
 
 // ----- Estate plans -----
 
-async fn list_estate_plans(State(pool): State<AppState>) -> Result<Json<Vec<EstatePlan>>, ApiError> {
+async fn list_estate_plans(
+    State(pool): State<AppState>,
+) -> Result<Json<Vec<EstatePlan>>, ApiError> {
     let rows = sqlx::query_as::<_, EstatePlan>("SELECT id, user_id, name, description, bitcoin_address, is_active, created_at, updated_at FROM estate_plans ORDER BY id")
         .fetch_all(pool.as_ref())
         .await?;
@@ -255,7 +262,13 @@ async fn create_beneficiary(
     State(pool): State<AppState>,
     Json(body): Json<CreateBeneficiary>,
 ) -> Result<(StatusCode, Json<Beneficiary>), ApiError> {
-    check_allocation_sum(pool.as_ref(), body.estate_plan_id, None, body.allocation_percentage).await?;
+    check_allocation_sum(
+        pool.as_ref(),
+        body.estate_plan_id,
+        None,
+        body.allocation_percentage,
+    )
+    .await?;
     let row = sqlx::query_as::<_, Beneficiary>(
         "INSERT INTO beneficiaries (estate_plan_id, name, email, bitcoin_address, allocation_percentage) VALUES ($1, $2, $3, $4, $5) RETURNING id, estate_plan_id, name, email, bitcoin_address, allocation_percentage::float8 AS allocation_percentage, created_at, updated_at",
     )
@@ -287,19 +300,15 @@ async fn update_beneficiary(
     .ok_or(ApiError::NotFound)?;
 
     if let Some(pct) = body.allocation_percentage {
-        check_allocation_sum(
-            pool.as_ref(),
-            existing.estate_plan_id,
-            Some(id),
-            pct,
-        )
-        .await?;
+        check_allocation_sum(pool.as_ref(), existing.estate_plan_id, Some(id), pct).await?;
     }
 
     let name = body.name.as_deref().unwrap_or(&existing.name);
     let email = body.email.or(existing.email);
     let bitcoin_address = body.bitcoin_address.or(existing.bitcoin_address);
-    let allocation_percentage = body.allocation_percentage.unwrap_or(existing.allocation_percentage);
+    let allocation_percentage = body
+        .allocation_percentage
+        .unwrap_or(existing.allocation_percentage);
 
     let row = sqlx::query_as::<_, Beneficiary>(
         "UPDATE beneficiaries SET name = $1, email = $2, bitcoin_address = $3, allocation_percentage = $4 WHERE id = $5 RETURNING id, estate_plan_id, name, email, bitcoin_address, allocation_percentage::float8 AS allocation_percentage, created_at, updated_at",

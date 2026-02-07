@@ -14,8 +14,11 @@ fn init_tracing_once() {
     INIT_TRACING.call_once(|| {
         let _ = tracing_subscriber::fmt()
             .with_env_filter(
-                tracing_subscriber::EnvFilter::try_from_default_env()
-                    .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("estate_planning_rust=info,tower_http=info,warn")),
+                tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| {
+                    tracing_subscriber::EnvFilter::new(
+                        "estate_planning_rust=info,tower_http=info,warn",
+                    )
+                }),
             )
             .with_writer(std::io::stderr)
             .try_init();
@@ -23,7 +26,10 @@ fn init_tracing_once() {
 }
 
 /// Returns None if DB is unavailable (tests should skip).
-async fn test_app() -> Option<(std::net::SocketAddr, tokio::task::JoinHandle<Result<(), std::io::Error>>)> {
+async fn test_app() -> Option<(
+    std::net::SocketAddr,
+    tokio::task::JoinHandle<Result<(), std::io::Error>>,
+)> {
     dotenvy::dotenv().ok();
     let database_url = std::env::var("DATABASE_URL").ok()?;
     let pool = db::create_pool(&database_url).await.ok()?;
@@ -44,9 +50,13 @@ async fn test_app() -> Option<(std::net::SocketAddr, tokio::task::JoinHandle<Res
                 uri = %req.uri()
             )
         })
-        .on_response(|_res: &axum::response::Response, _latency: std::time::Duration, span: &tracing::Span| {
-            span.in_scope(|| tracing::info!("request completed"));
-        });
+        .on_response(
+            |_res: &axum::response::Response,
+             _latency: std::time::Duration,
+             span: &tracing::Span| {
+                span.in_scope(|| tracing::info!("request completed"));
+            },
+        );
     let cors = CorsLayer::new()
         .allow_origin(Any)
         .allow_methods(Any)
@@ -107,7 +117,11 @@ async fn estate_plans_crud() {
     let base = format!("http://{}/api/v1", addr);
 
     // List (empty or existing)
-    let res = client.get(format!("{}/estate-plans", base)).send().await.expect("list");
+    let res = client
+        .get(format!("{}/estate-plans", base))
+        .send()
+        .await
+        .expect("list");
     assert_eq!(res.status(), 200);
 
     // Create
@@ -123,7 +137,12 @@ async fn estate_plans_crud() {
         .send()
         .await
         .expect("create");
-    assert_eq!(res.status(), 201, "create estate plan: {}", res.text().await.unwrap_or_default());
+    assert_eq!(
+        res.status(),
+        201,
+        "create estate plan: {}",
+        res.text().await.unwrap_or_default()
+    );
     let plan: serde_json::Value = res.json().await.expect("json");
     let id = plan["id"].as_i64().expect("id");
 
@@ -197,7 +216,12 @@ async fn beneficiaries_allocation_exceeded() {
         "name": "Ben A",
         "allocation_percentage": 60.0
     });
-    let res = client.post(format!("{}/beneficiaries", base)).json(&b1).send().await.expect("b1");
+    let res = client
+        .post(format!("{}/beneficiaries", base))
+        .json(&b1)
+        .send()
+        .await
+        .expect("b1");
     assert_eq!(res.status(), 201);
 
     // Create beneficiary 50% -> total 110% -> 422
@@ -206,10 +230,18 @@ async fn beneficiaries_allocation_exceeded() {
         "name": "Ben B",
         "allocation_percentage": 50.0
     });
-    let res = client.post(format!("{}/beneficiaries", base)).json(&b2).send().await.expect("b2");
+    let res = client
+        .post(format!("{}/beneficiaries", base))
+        .json(&b2)
+        .send()
+        .await
+        .expect("b2");
     assert_eq!(res.status(), 422, "allocation should exceed 100%");
     let body = res.text().await.expect("body");
-    assert!(body.contains("100") || body.contains("allocation"), "error message should mention allocation");
+    assert!(
+        body.contains("100") || body.contains("allocation"),
+        "error message should mention allocation"
+    );
 
     // Cleanup: delete plan (cascades or we delete beneficiaries first depending on schema)
     let _ = client

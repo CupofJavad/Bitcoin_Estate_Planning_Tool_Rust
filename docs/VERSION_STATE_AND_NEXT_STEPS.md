@@ -38,21 +38,19 @@ Frontend expects `NEXT_PUBLIC_API_URL=http://localhost:8000` (see `frontend/env.
 
 ## Next steps (recommended order)
 
-1. **Version control**  
-   - If not already: `git init` in `Estate_Planning_Rust`, add and commit this state so it’s the first saved baseline.
+1. ~~**Version control**~~ **Done:** Git inited and committed in `Estate_Planning_Rust`.
 
-2. **Lightweight UI polish (optional)**  
-   - Global API error handling (toasts or banner).  
-   - Loading states on create/edit/delete.  
-   - Trim unused frontend deps if any.
+2. ~~**Lightweight UI polish**~~ **Done:**  
+   - API client parses server error body (text or JSON) and throws with that message so toasts show e.g. “Beneficiary allocation total cannot exceed 100%”.  
+   - Global toasts via `GlobalToasts` in root layout; all catch blocks show `error.message`.  
+   - Loading states were already present on list/detail and forms.
 
-3. **Run on server**  
+3. ~~**CI / quality**~~ **Done:**  
+   - `.github/workflows/ci.yml`: on push/PR to `main`, runs `cargo fmt --check`, `cargo clippy`, and `cargo test` with a Postgres service so integration tests run.
+
+4. **Run on server**  
    - On the target server: clone/copy repo, set `.env` (e.g. `DATABASE_URL` for server Postgres), run same flow (docker for Postgres if needed, then `cargo run` and frontend).  
    - See [docs/DEPLOY.md](DEPLOY.md) for Lunaverse/deploy notes.
-
-4. **CI / quality**  
-   - Run `cargo test` in CI (with `DATABASE_URL` for integration tests).  
-   - Optional: lint/format (e.g. `cargo fmt`, `cargo clippy`).
 
 5. **Checklists**  
    - Use [docs/checklists/CHECKLISTS_INDEX.md](checklists/CHECKLISTS_INDEX.md) and [DEVELOPER_CHECKLISTS_UNIVERSAL](../../Estate_Management/docs/checklists/DEVELOPER_CHECKLISTS_UNIVERSAL.md) for design/build/test/deploy sign-off before production.

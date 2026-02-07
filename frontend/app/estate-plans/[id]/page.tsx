@@ -10,7 +10,7 @@ import { TimelockPolicyForm } from '@/components/timelock-policy/TimelockPolicyF
 import { TimelockPolicyCard } from '@/components/timelock-policy/TimelockPolicyCard'
 import { Modal } from '@/components/ui/modal'
 import { Button } from '@/components/ui/button'
-import { ToastContainer, toast } from '@/components/ui/toast'
+import { toast } from '@/components/ui/toast'
 import { ArrowLeft, Plus, Edit } from 'lucide-react'
 import { PieChart, Pie, Cell, ResponsiveContainer, Legend, Tooltip } from 'recharts'
 
@@ -65,7 +65,7 @@ export default function EstatePlanDetailPage() {
       setIsEditModalOpen(false)
       fetchEstatePlan()
     } catch (error) {
-      toast('Failed to update estate plan', 'error')
+      toast(error instanceof Error ? error.message : 'Failed to update estate plan', 'error')
     } finally {
       setIsSubmitting(false)
     }
@@ -82,7 +82,7 @@ export default function EstatePlanDetailPage() {
       setIsBeneficiaryModalOpen(false)
       fetchEstatePlan()
     } catch (error) {
-      toast('Failed to create beneficiary', 'error')
+      toast(error instanceof Error ? error.message : 'Failed to create beneficiary', 'error')
     } finally {
       setIsSubmitting(false)
     }
@@ -101,7 +101,7 @@ export default function EstatePlanDetailPage() {
       setEditingBeneficiary(undefined)
       fetchEstatePlan()
     } catch (error) {
-      toast('Failed to update beneficiary', 'error')
+      toast(error instanceof Error ? error.message : 'Failed to update beneficiary', 'error')
     } finally {
       setIsSubmitting(false)
     }
@@ -114,7 +114,7 @@ export default function EstatePlanDetailPage() {
       toast('Beneficiary deleted successfully', 'success')
       fetchEstatePlan()
     } catch (error) {
-      toast('Failed to delete beneficiary', 'error')
+      toast(error instanceof Error ? error.message : 'Failed to delete beneficiary', 'error')
     }
   }
 
@@ -129,7 +129,7 @@ export default function EstatePlanDetailPage() {
       setIsPolicyModalOpen(false)
       fetchEstatePlan()
     } catch (error) {
-      toast('Failed to create timelock policy', 'error')
+      toast(error instanceof Error ? error.message : 'Failed to create timelock policy', 'error')
     } finally {
       setIsSubmitting(false)
     }
@@ -148,7 +148,7 @@ export default function EstatePlanDetailPage() {
       setEditingPolicy(undefined)
       fetchEstatePlan()
     } catch (error) {
-      toast('Failed to update timelock policy', 'error')
+      toast(error instanceof Error ? error.message : 'Failed to update timelock policy', 'error')
     } finally {
       setIsSubmitting(false)
     }
@@ -161,7 +161,7 @@ export default function EstatePlanDetailPage() {
       toast('Timelock policy deleted successfully', 'success')
       fetchEstatePlan()
     } catch (error) {
-      toast('Failed to delete timelock policy', 'error')
+      toast(error instanceof Error ? error.message : 'Failed to delete timelock policy', 'error')
     }
   }
 
@@ -394,8 +394,6 @@ export default function EstatePlanDetailPage() {
             isLoading={isSubmitting}
           />
         </Modal>
-
-        <ToastContainer />
       </div>
     </div>
   )

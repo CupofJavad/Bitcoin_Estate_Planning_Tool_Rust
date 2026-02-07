@@ -5,7 +5,7 @@ import { EstatePlan, estatePlansApi } from '@/lib/api'
 import { EstatePlanList } from '@/components/estate-plan/EstatePlanList'
 import { EstatePlanForm } from '@/components/estate-plan/EstatePlanForm'
 import { Modal } from '@/components/ui/modal'
-import { ToastContainer, toast } from '@/components/ui/toast'
+import { toast } from '@/components/ui/toast'
 
 export default function Home() {
   const [estatePlans, setEstatePlans] = useState<EstatePlan[]>([])
@@ -51,7 +51,7 @@ export default function Home() {
       toast('Estate plan deleted successfully', 'success')
       fetchEstatePlans()
     } catch (error) {
-      toast('Failed to delete estate plan', 'error')
+      toast(error instanceof Error ? error.message : 'Failed to delete estate plan', 'error')
       console.error('Error deleting estate plan:', error)
     }
   }
@@ -143,8 +143,6 @@ export default function Home() {
           />
         </Modal>
 
-        {/* Toast Notifications */}
-        <ToastContainer />
       </div>
     </div>
   )
