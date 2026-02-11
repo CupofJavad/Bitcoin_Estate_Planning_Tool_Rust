@@ -2,15 +2,21 @@
 //! Logging is initialized so test runs produce logs for analysis.
 //! If the database is unavailable, tests are skipped (no failure).
 
+use axum::http::header::{ACCEPT, CONTENT_TYPE};
+use axum::http::Method;
 use estate_planning_rust::api;
 use estate_planning_rust::db;
 use std::sync::Once;
-use tower_http::cors::{Any, CorsLayer};
+use tower_http::cors::{AllowOrigin, CorsLayer};
 use tower_http::trace::TraceLayer;
 
 static INIT_TRACING: Once = Once::new();
+static INIT_RATE_LIMIT: Once = Once::new();
 
 fn init_tracing_once() {
+    INIT_RATE_LIMIT.call_once(|| {
+        std::env::set_var("RATE_LIMIT_MAX", "1000");
+    });
     INIT_TRACING.call_once(|| {
         let _ = tracing_subscriber::fmt()
             .with_env_filter(
@@ -57,16 +63,67 @@ async fn test_app() -> Option<(
                 span.in_scope(|| tracing::info!("request completed"));
             },
         );
+    // With allow_credentials(true), CORS forbids * for origin/headers/methods; use explicit lists.
     let cors = CorsLayer::new()
-        .allow_origin(Any)
-        .allow_methods(Any)
-        .allow_headers(Any);
+        .allow_origin(AllowOrigin::mirror_request())
+        .allow_methods([
+            Method::GET,
+            Method::POST,
+            Method::PUT,
+            Method::PATCH,
+            Method::DELETE,
+        ])
+        .allow_headers([CONTENT_TYPE, ACCEPT])
+        .allow_credentials(true);
+    // Relax rate limit so parallel tests don't get 429 (or set RATE_LIMIT_MAX=1000 in env).
+    std::env::set_var("RATE_LIMIT_MAX", "1000");
     let app = api::router(pool).layer(trace_layer).layer(cors);
 
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.ok()?;
     let addr = listener.local_addr().ok()?;
     let handle = tokio::spawn(async move { axum::serve(listener, app).await });
     Some((addr, handle))
+}
+
+/// Register, login, and return a client with session cookie. Fails (returns None) if auth fails.
+async fn auth_client(addr: std::net::SocketAddr) -> Option<reqwest::Client> {
+    let client = reqwest::Client::builder()
+        .cookie_store(true)
+        .build()
+        .ok()?;
+    let register = serde_json::json!({
+        "email": "test@example.com",
+        "password": "password1234",
+        "name": "Test User"
+    });
+    let res = client
+        .post(format!("http://{}/auth/register", addr))
+        .json(&register)
+        .send()
+        .await
+        .ok()?;
+    if res.status() != 201 {
+        let login_res = client
+            .post(format!("http://{}/auth/login", addr))
+            .json(&serde_json::json!({ "email": "test@example.com", "password": "password1234" }))
+            .send()
+            .await
+            .ok()?;
+        if login_res.status() != 200 {
+            return None;
+        }
+    } else {
+        let login_res = client
+            .post(format!("http://{}/auth/login", addr))
+            .json(&serde_json::json!({ "email": "test@example.com", "password": "password1234" }))
+            .send()
+            .await
+            .ok()?;
+        if login_res.status() != 200 {
+            return None;
+        }
+    }
+    Some(client)
 }
 
 #[tokio::test]
@@ -107,13 +164,80 @@ async fn version_returns_app_and_migration_version() {
 }
 
 #[tokio::test]
-async fn estate_plans_crud() {
+async fn auth_register_and_login() {
+    init_tracing_once();
+    let Some((addr, _handle)) = test_app().await else {
+        eprintln!("SKIP: DATABASE_URL unset or Postgres unreachable");
+        return;
+    };
+    let client = reqwest::Client::builder().cookie_store(true).build().expect("client");
+    let register = serde_json::json!({
+        "email": "auth_test@example.com",
+        "password": "password1234",
+        "name": "Auth Test"
+    });
+    let res = client
+        .post(format!("http://{}/auth/register", addr))
+        .json(&register)
+        .send()
+        .await
+        .expect("register");
+    let status = res.status();
+    assert!(status == 201 || status == 400, "register: {} (201 or 400 expected)", res.text().await.unwrap_or_default());
+    let res = client
+        .post(format!("http://{}/auth/login", addr))
+        .json(&serde_json::json!({ "email": "auth_test@example.com", "password": "password1234" }))
+        .send()
+        .await
+        .expect("login");
+    assert_eq!(res.status(), 200, "login: {}", res.text().await.unwrap_or_default());
+    let me_res = client.get(format!("http://{}/api/v1/me", addr)).send().await.expect("me");
+    assert_eq!(me_res.status(), 200);
+    let me: serde_json::Value = me_res.json().await.expect("json");
+    assert_eq!(me["email"], "auth_test@example.com");
+}
+
+#[tokio::test]
+async fn login_wrong_password_returns_401() {
     init_tracing_once();
     let Some((addr, _handle)) = test_app().await else {
         eprintln!("SKIP: DATABASE_URL unset or Postgres unreachable");
         return;
     };
     let client = reqwest::Client::new();
+    let res = client
+        .post(format!("http://{}/auth/login", addr))
+        .json(&serde_json::json!({ "email": "nonexistent@example.com", "password": "wrongpass" }))
+        .send()
+        .await
+        .expect("login");
+    assert_eq!(res.status(), 401, "wrong credentials should return 401");
+}
+
+#[tokio::test]
+async fn estate_plans_require_auth() {
+    init_tracing_once();
+    let Some((addr, _handle)) = test_app().await else {
+        eprintln!("SKIP: DATABASE_URL unset or Postgres unreachable");
+        return;
+    };
+    let client = reqwest::Client::new();
+    let res = client
+        .get(format!("http://{}/api/v1/estate-plans", addr))
+        .send()
+        .await
+        .expect("list");
+    assert_eq!(res.status(), 401);
+}
+
+#[tokio::test]
+async fn estate_plans_crud() {
+    init_tracing_once();
+    let Some((addr, _handle)) = test_app().await else {
+        eprintln!("SKIP: DATABASE_URL unset or Postgres unreachable");
+        return;
+    };
+    let client = auth_client(addr).await.expect("auth client");
     let base = format!("http://{}/api/v1", addr);
 
     // List (empty or existing)
@@ -194,7 +318,7 @@ async fn beneficiaries_allocation_exceeded() {
         eprintln!("SKIP: DATABASE_URL unset or Postgres unreachable");
         return;
     };
-    let client = reqwest::Client::new();
+    let client = auth_client(addr).await.expect("auth client");
     let base = format!("http://{}/api/v1", addr);
 
     // Create plan
@@ -268,7 +392,7 @@ async fn timelock_policies_crud() {
         eprintln!("SKIP: DATABASE_URL unset or Postgres unreachable");
         return;
     };
-    let client = reqwest::Client::new();
+    let client = auth_client(addr).await.expect("auth client");
     let base = format!("http://{}/api/v1", addr);
 
     // Create plan first
@@ -341,7 +465,7 @@ async fn not_found_returns_404() {
         eprintln!("SKIP: DATABASE_URL unset or Postgres unreachable");
         return;
     };
-    let client = reqwest::Client::new();
+    let client = auth_client(addr).await.expect("auth client");
     let res = client
         .get(format!("http://{}/api/v1/estate-plans/99999", addr))
         .send()
@@ -355,4 +479,64 @@ async fn not_found_returns_404() {
     assert_eq!(problem["status"], 404);
     assert!(problem.get("title").and_then(|v| v.as_str()).is_some());
     assert!(problem.get("detail").and_then(|v| v.as_str()).is_some());
+}
+
+#[tokio::test]
+async fn patch_me_and_change_password() {
+    init_tracing_once();
+    let Some((addr, _handle)) = test_app().await else {
+        eprintln!("SKIP: DATABASE_URL unset or Postgres unreachable");
+        return;
+    };
+    let client = auth_client(addr).await.expect("auth client");
+    let base = format!("http://{}/api/v1", addr);
+
+    // PATCH /me — update name
+    let res = client
+        .patch(format!("{}/me", base))
+        .json(&serde_json::json!({ "name": "Updated Name" }))
+        .send()
+        .await
+        .expect("patch me");
+    assert_eq!(res.status(), 200);
+    let me: serde_json::Value = res.json().await.expect("json");
+    assert_eq!(me["name"], "Updated Name");
+
+    // Change password
+    let res = client
+        .post(format!("{}/me/password", base))
+        .json(&serde_json::json!({
+            "current_password": "password1234",
+            "new_password": "newpassword123"
+        }))
+        .send()
+        .await
+        .expect("change password");
+    assert_eq!(res.status(), 204);
+
+    // Login with new password (new client to drop old session cookie)
+    let client2 = reqwest::Client::builder().cookie_store(true).build().expect("client");
+    let res = client2
+        .post(format!("http://{}/auth/login", addr))
+        .json(&serde_json::json!({ "email": "test@example.com", "password": "newpassword123" }))
+        .send()
+        .await
+        .expect("login with new password");
+    assert_eq!(res.status(), 200, "login with new password should succeed");
+}
+
+#[tokio::test]
+async fn admin_list_users_requires_admin() {
+    init_tracing_once();
+    let Some((addr, _handle)) = test_app().await else {
+        eprintln!("SKIP: DATABASE_URL unset or Postgres unreachable");
+        return;
+    };
+    let client = auth_client(addr).await.expect("auth client");
+    let res = client
+        .get(format!("http://{}/api/v1/admin/users", addr))
+        .send()
+        .await
+        .expect("request");
+    assert_eq!(res.status(), 403, "non-admin should get 403 Forbidden");
 }

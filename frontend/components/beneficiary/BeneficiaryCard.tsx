@@ -20,26 +20,26 @@ export function BeneficiaryCard({ beneficiary, onEdit, onDelete }: BeneficiaryCa
   const hasAnyAddress = beneficiary.bitcoin_address || beneficiary.monero_address || beneficiary.stacks_address
 
   return (
-    <div className="bg-white border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow">
+    <div className="bg-white border border-[#e2e8f0] rounded-lg p-4 hover:shadow-md transition-shadow">
       <div className="flex items-start justify-between mb-3">
         <div className="flex-1">
-          <h3 className="text-base font-semibold text-gray-900 mb-1">
+          <h3 className="text-base font-semibold text-[#0f172a] mb-1">
             {beneficiary.name}
           </h3>
           {beneficiary.email && (
-            <div className="flex items-center gap-1 text-sm text-gray-600 mb-2">
+            <div className="flex items-center gap-1 text-sm text-[#334155] mb-2">
               <Mail className="h-4 w-4" />
               <span>{beneficiary.email}</span>
             </div>
           )}
         </div>
         <div className="text-right">
-          <div className="text-lg font-bold text-blue-600">
+          <div className="text-lg font-bold text-[#0ea5e9]">
             {beneficiary.allocation_percentage.toFixed(2)}%
           </div>
-          <div className="w-16 bg-gray-200 rounded-full h-2 mt-1">
+          <div className="w-16 bg-[#e2e8f0] rounded-full h-2 mt-1">
             <div
-              className="bg-blue-600 h-2 rounded-full"
+              className="bg-[#0ea5e9] h-2 rounded-full"
               style={{ width: `${beneficiary.allocation_percentage}%` }}
             />
           </div>
@@ -47,12 +47,12 @@ export function BeneficiaryCard({ beneficiary, onEdit, onDelete }: BeneficiaryCa
       </div>
 
       {hasAnyAddress && (
-        <div className="mb-3 p-2 bg-gray-50 rounded border border-gray-200 space-y-1.5">
+        <div className="mb-3 p-2 bg-[#f8fafc] rounded border border-[#e2e8f0] space-y-1.5">
           {beneficiary.bitcoin_address && (
             <div className="flex items-center justify-between gap-1">
               <div className="flex-1 min-w-0">
-                <p className="text-xs text-gray-500 mb-0.5">Bitcoin (BTC)</p>
-                <p className="text-xs font-mono text-gray-900 truncate">{beneficiary.bitcoin_address}</p>
+                <p className="text-xs text-[#334155] mb-0.5">Bitcoin (BTC)</p>
+                <p className="text-xs font-mono text-[#0f172a] truncate">{beneficiary.bitcoin_address}</p>
               </div>
               <Button variant="ghost" size="icon" onClick={() => copyAddress(beneficiary.bitcoin_address!, 'Bitcoin')} className="h-7 w-7 flex-shrink-0">
                 <Copy className="h-3 w-3" />
@@ -62,8 +62,8 @@ export function BeneficiaryCard({ beneficiary, onEdit, onDelete }: BeneficiaryCa
           {beneficiary.monero_address && (
             <div className="flex items-center justify-between gap-1">
               <div className="flex-1 min-w-0">
-                <p className="text-xs text-gray-500 mb-0.5">Monero (XMR)</p>
-                <p className="text-xs font-mono text-gray-900 truncate">{beneficiary.monero_address}</p>
+                <p className="text-xs text-[#334155] mb-0.5">Monero (XMR)</p>
+                <p className="text-xs font-mono text-[#0f172a] truncate">{beneficiary.monero_address}</p>
               </div>
               <Button variant="ghost" size="icon" onClick={() => copyAddress(beneficiary.monero_address!, 'Monero')} className="h-7 w-7 flex-shrink-0">
                 <Copy className="h-3 w-3" />
@@ -73,8 +73,8 @@ export function BeneficiaryCard({ beneficiary, onEdit, onDelete }: BeneficiaryCa
           {beneficiary.stacks_address && (
             <div className="flex items-center justify-between gap-1">
               <div className="flex-1 min-w-0">
-                <p className="text-xs text-gray-500 mb-0.5">Stacks (STX)</p>
-                <p className="text-xs font-mono text-gray-900 truncate">{beneficiary.stacks_address}</p>
+                <p className="text-xs text-[#334155] mb-0.5">Stacks (STX)</p>
+                <p className="text-xs font-mono text-[#0f172a] truncate">{beneficiary.stacks_address}</p>
               </div>
               <Button variant="ghost" size="icon" onClick={() => copyAddress(beneficiary.stacks_address!, 'Stacks')} className="h-7 w-7 flex-shrink-0">
                 <Copy className="h-3 w-3" />

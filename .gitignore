@@ -1,6 +1,8 @@
 /target
 .env
+.deploy-server.env
 *.pdb
 logs/
+.run-logs/
 node_modules/
 .next/

@@ -1,10 +1,16 @@
 /**
- * API Client for Bitcoin Estate Planning Platform
- * Centralized API communication with error handling
+ * API Client for Legacy Vault (multi-chain estate planning)
+ * Centralized API communication with error handling.
+ * All requests use credentials: 'include' for session cookies.
+ * On 401, redirects to /login (client-side only).
  */
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
 const BASE_URL = `${API_URL}/api/v1`
+
+const DEFAULT_FETCH_OPTIONS: RequestInit = {
+  credentials: 'include',
+}
 
 /** Throw with server message (Rust API returns plain text or JSON detail). */
 async function throwApiError(res: Response, fallback: string): Promise<never> {
@@ -19,6 +25,16 @@ async function throwApiError(res: Response, fallback: string): Promise<never> {
     }
   }
   throw new Error(message)
+}
+
+/** Fetch with credentials; on 401 redirect to /login when in browser. */
+async function authFetch(url: string, options: RequestInit = {}): Promise<Response> {
+  const res = await fetch(url, { ...DEFAULT_FETCH_OPTIONS, ...options })
+  if (res.status === 401 && typeof window !== 'undefined') {
+    window.location.href = '/login'
+    throw new Error('Unauthorized')
+  }
+  return res
 }
 
 export interface EstatePlan {
@@ -71,7 +87,7 @@ export const estatePlansApi = {
       const url = user_id 
         ? `${BASE_URL}/estate-plans?user_id=${user_id}`
         : `${BASE_URL}/estate-plans`
-      const res = await fetch(url)
+      const res = await authFetch(url)
       if (!res.ok) await throwApiError(res, 'Failed to fetch estate plans')
       return res.json()
     } catch (error) {
@@ -84,7 +100,7 @@ export const estatePlansApi = {
 
   get: async (id: number): Promise<EstatePlanWithRelations> => {
     try {
-      const res = await fetch(`${BASE_URL}/estate-plans/${id}`)
+      const res = await authFetch(`${BASE_URL}/estate-plans/${id}`)
       if (!res.ok) await throwApiError(res, 'Failed to fetch estate plan')
       return res.json()
     } catch (error) {
@@ -96,7 +112,7 @@ export const estatePlansApi = {
   },
 
   create: async (data: Omit<EstatePlan, 'id' | 'created_at' | 'updated_at'>): Promise<EstatePlan> => {
-    const res = await fetch(`${BASE_URL}/estate-plans`, {
+    const res = await authFetch(`${BASE_URL}/estate-plans`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data),
@@ -106,7 +122,7 @@ export const estatePlansApi = {
   },
 
   update: async (id: number, data: Partial<EstatePlan>): Promise<EstatePlan> => {
-    const res = await fetch(`${BASE_URL}/estate-plans/${id}`, {
+    const res = await authFetch(`${BASE_URL}/estate-plans/${id}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data),
@@ -116,7 +132,7 @@ export const estatePlansApi = {
   },
 
   delete: async (id: number): Promise<void> => {
-    const res = await fetch(`${BASE_URL}/estate-plans/${id}`, { method: 'DELETE' })
+    const res = await authFetch(`${BASE_URL}/estate-plans/${id}`, { method: 'DELETE' })
     if (!res.ok) await throwApiError(res, 'Failed to delete estate plan')
   },
 }
@@ -127,19 +143,19 @@ export const beneficiariesApi = {
     const url = estate_plan_id
       ? `${BASE_URL}/beneficiaries?estate_plan_id=${estate_plan_id}`
       : `${BASE_URL}/beneficiaries`
-    const res = await fetch(url)
+    const res = await authFetch(url)
     if (!res.ok) await throwApiError(res, 'Failed to fetch beneficiaries')
     return res.json()
   },
 
   get: async (id: number): Promise<Beneficiary> => {
-    const res = await fetch(`${BASE_URL}/beneficiaries/${id}`)
+    const res = await authFetch(`${BASE_URL}/beneficiaries/${id}`)
     if (!res.ok) await throwApiError(res, 'Failed to fetch beneficiary')
     return res.json()
   },
 
   create: async (data: Omit<Beneficiary, 'id' | 'created_at' | 'updated_at'>): Promise<Beneficiary> => {
-    const res = await fetch(`${BASE_URL}/beneficiaries`, {
+    const res = await authFetch(`${BASE_URL}/beneficiaries`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data),
@@ -149,7 +165,7 @@ export const beneficiariesApi = {
   },
 
   update: async (id: number, data: Partial<Beneficiary>): Promise<Beneficiary> => {
-    const res = await fetch(`${BASE_URL}/beneficiaries/${id}`, {
+    const res = await authFetch(`${BASE_URL}/beneficiaries/${id}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data),
@@ -159,7 +175,7 @@ export const beneficiariesApi = {
   },
 
   delete: async (id: number): Promise<void> => {
-    const res = await fetch(`${BASE_URL}/beneficiaries/${id}`, { method: 'DELETE' })
+    const res = await authFetch(`${BASE_URL}/beneficiaries/${id}`, { method: 'DELETE' })
     if (!res.ok) await throwApiError(res, 'Failed to delete beneficiary')
   },
 }
@@ -170,19 +186,19 @@ export const timelockPoliciesApi = {
     const url = estate_plan_id
       ? `${BASE_URL}/timelock-policies?estate_plan_id=${estate_plan_id}`
       : `${BASE_URL}/timelock-policies`
-    const res = await fetch(url)
+    const res = await authFetch(url)
     if (!res.ok) await throwApiError(res, 'Failed to fetch timelock policies')
     return res.json()
   },
 
   get: async (id: number): Promise<TimelockPolicy> => {
-    const res = await fetch(`${BASE_URL}/timelock-policies/${id}`)
+    const res = await authFetch(`${BASE_URL}/timelock-policies/${id}`)
     if (!res.ok) await throwApiError(res, 'Failed to fetch timelock policy')
     return res.json()
   },
 
   create: async (data: Omit<TimelockPolicy, 'id' | 'created_at' | 'updated_at'>): Promise<TimelockPolicy> => {
-    const res = await fetch(`${BASE_URL}/timelock-policies`, {
+    const res = await authFetch(`${BASE_URL}/timelock-policies`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data),
@@ -192,7 +208,7 @@ export const timelockPoliciesApi = {
   },
 
   update: async (id: number, data: Partial<TimelockPolicy>): Promise<TimelockPolicy> => {
-    const res = await fetch(`${BASE_URL}/timelock-policies/${id}`, {
+    const res = await authFetch(`${BASE_URL}/timelock-policies/${id}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data),
@@ -202,8 +218,70 @@ export const timelockPoliciesApi = {
   },
 
   delete: async (id: number): Promise<void> => {
-    const res = await fetch(`${BASE_URL}/timelock-policies/${id}`, { method: 'DELETE' })
+    const res = await authFetch(`${BASE_URL}/timelock-policies/${id}`, { method: 'DELETE' })
     if (!res.ok) await throwApiError(res, 'Failed to delete timelock policy')
   },
+}
+
+// Admin API (requires role === 'admin')
+export interface AdminUserSummary {
+  id: number
+  email: string
+  name: string | null
+  role: string
+  is_active: boolean
+}
+
+export const adminApi = {
+  listUsers: async (): Promise<AdminUserSummary[]> => {
+    const res = await authFetch(`${BASE_URL}/admin/users`)
+    if (!res.ok) await throwApiError(res, 'Failed to fetch users')
+    return res.json()
+  },
+
+  updateUser: async (
+    id: number,
+    data: { role?: string; is_active?: boolean }
+  ): Promise<AdminUserSummary> => {
+    const res = await authFetch(`${BASE_URL}/admin/users/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    })
+    if (!res.ok) await throwApiError(res, 'Failed to update user')
+    return res.json()
+  },
+
+  listAuditEvents: async (params?: {
+    from?: string
+    to?: string
+    user_id?: number
+    action?: string
+    entity_type?: string
+    limit?: number
+  }): Promise<AuditEventRow[]> => {
+    const search = new URLSearchParams()
+    if (params?.from) search.set('from', params.from)
+    if (params?.to) search.set('to', params.to)
+    if (params?.user_id != null) search.set('user_id', String(params.user_id))
+    if (params?.action) search.set('action', params.action)
+    if (params?.entity_type) search.set('entity_type', params.entity_type)
+    if (params?.limit != null) search.set('limit', String(params.limit))
+    const qs = search.toString()
+    const url = qs ? `${BASE_URL}/admin/audit?${qs}` : `${BASE_URL}/admin/audit`
+    const res = await authFetch(url)
+    if (!res.ok) await throwApiError(res, 'Failed to fetch audit events')
+    return res.json()
+  },
+}
+
+export interface AuditEventRow {
+  id: number
+  created_at: string
+  user_id: number | null
+  action: string
+  entity_type: string
+  entity_id: number | null
+  details: Record<string, unknown> | null
 }
 

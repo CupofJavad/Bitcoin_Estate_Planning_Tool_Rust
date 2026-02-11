@@ -72,22 +72,22 @@ export function BeneficiaryForm({
   return (
     <form onSubmit={handleSubmit(onSubmitForm)} className="space-y-4">
       <div>
-        <label htmlFor="name" className="block text-sm font-medium text-gray-700 mb-1">
-          Name <span className="text-red-500">*</span>
+        <label htmlFor="name" className="block text-sm font-medium text-[#334155] mb-1">
+          Name <span className="text-[#ef4444]">*</span>
         </label>
         <input
           id="name"
           type="text"
           {...register('name', { required: 'Name is required' })}
-          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+          className="w-full px-3 py-2 border border-[#e2e8f0] rounded-md focus:outline-none focus:ring-2 focus:ring-[#0ea5e9]"
         />
         {errors.name && (
-          <p className="mt-1 text-sm text-red-600">{errors.name.message}</p>
+          <p className="mt-1 text-sm text-[#ef4444]">{errors.name.message}</p>
         )}
       </div>
 
       <div>
-        <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-1">
+        <label htmlFor="email" className="block text-sm font-medium text-[#334155] mb-1">
           Email
         </label>
         <input
@@ -99,16 +99,16 @@ export function BeneficiaryForm({
               message: 'Invalid email address',
             },
           })}
-          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+          className="w-full px-3 py-2 border border-[#e2e8f0] rounded-md focus:outline-none focus:ring-2 focus:ring-[#0ea5e9]"
         />
         {errors.email && (
-          <p className="mt-1 text-sm text-red-600">{errors.email.message}</p>
+          <p className="mt-1 text-sm text-[#ef4444]">{errors.email.message}</p>
         )}
       </div>
 
       <div className="space-y-2">
         <div>
-          <label htmlFor="bitcoin_address" className="block text-sm font-medium text-gray-700 mb-1">
+          <label htmlFor="bitcoin_address" className="block text-sm font-medium text-[#334155] mb-1">
             Bitcoin (BTC) Address
           </label>
           <input
@@ -116,11 +116,11 @@ export function BeneficiaryForm({
             type="text"
             {...register('bitcoin_address')}
             placeholder="bc1q... or 1..."
-            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono text-sm"
+            className="w-full px-3 py-2 border border-[#e2e8f0] rounded-md focus:outline-none focus:ring-2 focus:ring-[#0ea5e9] font-mono text-sm"
           />
         </div>
         <div>
-          <label htmlFor="monero_address" className="block text-sm font-medium text-gray-700 mb-1">
+          <label htmlFor="monero_address" className="block text-sm font-medium text-[#334155] mb-1">
             Monero (XMR) Address
           </label>
           <input
@@ -128,11 +128,11 @@ export function BeneficiaryForm({
             type="text"
             {...register('monero_address')}
             placeholder="4... or 8..."
-            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono text-sm"
+            className="w-full px-3 py-2 border border-[#e2e8f0] rounded-md focus:outline-none focus:ring-2 focus:ring-[#0ea5e9] font-mono text-sm"
           />
         </div>
         <div>
-          <label htmlFor="stacks_address" className="block text-sm font-medium text-gray-700 mb-1">
+          <label htmlFor="stacks_address" className="block text-sm font-medium text-[#334155] mb-1">
             Stacks (STX) Address
           </label>
           <input
@@ -140,14 +140,14 @@ export function BeneficiaryForm({
             type="text"
             {...register('stacks_address')}
             placeholder="SP... or ST..."
-            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono text-sm"
+            className="w-full px-3 py-2 border border-[#e2e8f0] rounded-md focus:outline-none focus:ring-2 focus:ring-[#0ea5e9] font-mono text-sm"
           />
         </div>
       </div>
 
       <div>
-        <label htmlFor="allocation_percentage" className="block text-sm font-medium text-gray-700 mb-1">
-          Allocation Percentage <span className="text-red-500">*</span>
+        <label htmlFor="allocation_percentage" className="block text-sm font-medium text-[#334155] mb-1">
+          Allocation Percentage <span className="text-[#ef4444]">*</span>
         </label>
         <div className="flex items-center gap-3">
           <input
@@ -161,21 +161,21 @@ export function BeneficiaryForm({
               min: { value: 0, message: 'Must be at least 0%' },
               max: { value: maxAllocation, message: `Maximum ${maxAllocation.toFixed(2)}% available` },
             })}
-            className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="flex-1 px-3 py-2 border border-[#e2e8f0] rounded-md focus:outline-none focus:ring-2 focus:ring-[#0ea5e9]"
           />
-          <span className="text-gray-600">%</span>
+          <span className="text-[#334155]">%</span>
         </div>
         {errors.allocation_percentage && (
-          <p className="mt-1 text-sm text-red-600">{errors.allocation_percentage.message}</p>
+          <p className="mt-1 text-sm text-[#ef4444]">{errors.allocation_percentage.message}</p>
         )}
-        <p className="mt-1 text-xs text-gray-500">
+        <p className="mt-1 text-xs text-[#334155]">
           Remaining allocation: {remainingAllocation.toFixed(2)}%
         </p>
         {allocationPercentage && (
           <div className="mt-2">
-            <div className="w-full bg-gray-200 rounded-full h-2">
+            <div className="w-full bg-[#e2e8f0] rounded-full h-2">
               <div
-                className="bg-blue-600 h-2 rounded-full transition-all"
+                className="bg-[#0ea5e9] h-2 rounded-full transition-all"
                 style={{ width: `${Math.min(allocationPercentage, 100)}%` }}
               />
             </div>

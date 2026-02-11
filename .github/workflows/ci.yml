@@ -50,6 +50,7 @@ jobs:
 
     env:
       DATABASE_URL: postgres://postgres:postgres@localhost:5432/estate_planning_rust
+      RATE_LIMIT_MAX: "1000"
 
     steps:
       - uses: actions/checkout@v4

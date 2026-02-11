@@ -1,0 +1,45 @@
+# Page snapshot
+
+```yaml
+- generic [active] [ref=e1]:
+  - alert [ref=e2]
+  - main [ref=e3]:
+    - generic [ref=e5]:
+      - generic [ref=e6]:
+        - heading "Legacy Vault" [level=1] [ref=e7]
+        - paragraph [ref=e8]: Secure your crypto for those who come next.
+      - generic [ref=e9]:
+        - heading "Sign in" [level=2] [ref=e10]
+        - generic [ref=e11]:
+          - generic [ref=e12]:
+            - generic [ref=e13]: Email
+            - textbox "Email" [ref=e14]:
+              - /placeholder: you@example.com
+              - text: admin@localhost
+          - generic [ref=e15]:
+            - generic [ref=e16]: Password
+            - textbox "Password" [ref=e17]: admin
+          - button "Sign in" [ref=e18] [cursor=pointer]
+        - paragraph [ref=e19]:
+          - text: Don't have an account?
+          - link "Register" [ref=e20] [cursor=pointer]:
+            - /url: /register
+  - contentinfo [ref=e21]:
+    - generic [ref=e22]:
+      - generic [ref=e23]:
+        - generic [ref=e24]: Legacy Vault – Secure your crypto for those who come next.
+        - generic [ref=e25]:
+          - link "Terms" [ref=e26] [cursor=pointer]:
+            - /url: /terms
+          - link "Privacy" [ref=e27] [cursor=pointer]:
+            - /url: /privacy
+          - link "Data & security" [ref=e28] [cursor=pointer]:
+            - /url: /data
+          - link "Contact" [ref=e29] [cursor=pointer]:
+            - /url: /contact
+      - paragraph [ref=e30]:
+        - text: Digital estate planning tool only — not legal or fiduciary advice. See
+        - link "Terms" [ref=e31] [cursor=pointer]:
+          - /url: /terms
+        - text: for details.
+```

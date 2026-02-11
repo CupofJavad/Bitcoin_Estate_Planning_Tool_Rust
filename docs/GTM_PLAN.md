@@ -1,7 +1,11 @@
 # Go-to-Market (GTM) Plan: Full Product Build
 
-**Document version:** 1.0  
+**Document version:** 1.1  
 **Created:** 2026-02-07  
+
+**Changelog:**  
+- **1.1:** Added Compliance and Legal (RUFADAA, GDPR, retention, user rights); production auth (JWT/JWKS, rate limiting, brute-force); BCDR for Phase 0; Launch and Activation (metrics, support); expanded risk register and incident response; diagram and appendix updates.
+
 **Scope:** Transform the current MVP (multi-chain estate planning: BTC, XMR, STX) into a fully developed, production-ready GTM product with authentication, roles, admin, account management, and optional wallet features.
 
 This plan draws on: this conversation (MVP complete, multi-network, product roadmap); [DEVELOPER_CHECKLISTS_UNIVERSAL](../../Estate_Management/docs/checklists/DEVELOPER_CHECKLISTS_UNIVERSAL.md); [CHECKLISTS_INDEX](checklists/CHECKLISTS_INDEX.md); [GITHUB_SEARCH_RESULTS_AND_ANALYSIS](GITHUB_SEARCH_RESULTS_AND_ANALYSIS.md); [PRODUCT_ROADMAP](PRODUCT_ROADMAP.md); [VERSION_STATE_AND_NEXT_STEPS](VERSION_STATE_AND_NEXT_STEPS.md); [DEPLOY](DEPLOY.md); Checklists.txt (industry checklists); and common industry standards (OWASP, WCAG, RFC 7807, TLS, etc.).
@@ -113,6 +117,36 @@ Use the primary slogan in: meta description, landing/marketing copy, footer, and
 
 ---
 
+# Part 1.5: Compliance and Legal
+
+## 1.5.1 Digital estate and inheritance (RUFADAA)
+
+- **Disclaimer:** Legacy Vault is a planning and documentation tool only; it does not provide legal or fiduciary advice. Users should use it to document plans and inform beneficiaries; actual transfer of assets and legal authority must be handled through traditional legal mechanisms (wills, trusts, executor appointment) and applicable law (e.g. RUFADAA where adopted).
+- **In-app:** Require or recommend a short disclaimer on first use or in Terms of Service; optional "Learn more" link to a static page explaining digital estate planning and the role of legal professionals.
+- **Checklist:** Legal disclaimer and ToS/Privacy placeholders (already in branding) explicitly reference "digital estate planning tool, not legal advice."
+
+## 1.5.2 GDPR and data protection
+
+- **Data retention:** Define retention per category; justify each with purpose (contract, legal obligation, legitimate interest). Document in a retention matrix:
+
+| Data category    | Retention | Purpose / basis |
+|------------------|-----------|------------------|
+| Account data     | While account active + 30 days after deletion request | Contract; then erasure |
+| Audit logs       | 12 months (or as required by security/compliance)      | Legitimate interest / legal |
+| Sessions         | Until expiry or logout                                 | Contract performance |
+
+- **Privacy policy requirements:** Controller identity and contact; processing purposes and legal bases; retention periods; data subject rights (access, rectification, erasure, portability, restriction, objection); right to complain to supervisory authority; international transfers if any.
+- **User rights implementation (GTM checklist):** (1) **Account deletion:** Delete or anonymize user and associated data; cascade or document handling of estate_plans/beneficiaries. (2) **Data export:** Export my plans/beneficiaries as JSON. (3) **Access:** User can view their profile and linked data via existing `/me` and plan endpoints.
+- **Cookie and tracking:** If analytics or non-essential cookies are added, document consent (granular opt-in, logged with timestamp) and list in privacy policy; avoid pre-ticked boxes.
+- **Reference:** [GDPR checklist](https://gdpr.eu/checklist/) (see Appendix A).
+
+## 1.5.3 Fintech / crypto regulatory awareness (light-touch)
+
+- **Out of scope for initial GTM:** No custody, no exchange, no payment processing—so MiCA/VASP/FCA registration may not apply. If the product later holds or moves user funds, or operates in regulated jurisdictions (EU MiCA, UK FCA), a regulatory mapping and compliance program (policies, MLRO, AML/KYC if required) will be needed; for current GTM, document that the app does not trigger these and revisit if scope changes.
+- **Customer support:** Establish customer support channel (e.g. email or support form) and document response expectations; see Part 8 (Launch and Activation) for post-launch support.
+
+---
+
 # Part 2: GTM Scope and Success Criteria
 
 ## 2.1 In scope for GTM
@@ -144,6 +178,29 @@ Use the primary slogan in: meta description, landing/marketing copy, footer, and
 ---
 
 # Part 3: Phase Breakdown
+
+```mermaid
+flowchart LR
+  subgraph phase0 [Phase 0]
+    P0[Harden and Deploy]
+    BCDR[BC and DR]
+  end
+  subgraph phaseA [Phase A]
+    Auth[Auth and Identity]
+    Rate[Rate Limit and Security]
+  end
+  subgraph phaseBtoD [Phases B to D]
+    Roles[Roles]
+    Account[Account and Admin]
+  end
+  subgraph cross [Cross-Cutting]
+    Legal[Compliance and Legal]
+    Launch[Launch and Activation]
+  end
+  phase0 --> phaseA --> phaseBtoD
+  Legal --> phaseA
+  Launch --> phaseBtoD
+```
 
 ## Phase 0: Harden & Deploy (Pre–GTM)
 
@@ -188,6 +245,14 @@ Use the primary slogan in: meta description, landing/marketing copy, footer, and
 
 - API and frontend run on target server; TLS in front; env-based config; CI green; checklists run and gaps documented or fixed; [VERSION_STATE_AND_NEXT_STEPS](VERSION_STATE_AND_NEXT_STEPS.md) updated.
 
+### 3.0.7 Business continuity and disaster recovery (BCDR)
+
+- [ ] **RTO/RPO:** Define Recovery Time Objective (e.g. target max downtime in hours) and Recovery Point Objective (e.g. max acceptable data loss—e.g. 24 hours) for the application and database; document in the plan.
+- [ ] **Backups:** Automated DB backups (daily or per deployment); backup retention (e.g. 7–30 days); test restore at least once per release or quarterly.
+- [ ] **Runbook:** Document steps to restore from backup; redeploy previous version; who to contact (owner, host). Link or mention in [DEPLOY](DEPLOY.md).
+- [ ] **Testing:** BC/DR plan documented; backup restore tested; runbook updated and accessible.
+- [ ] **Governance:** Assign an owner for BCDR updates (e.g. same as deploy owner); review plan when architecture or data criticality changes.
+
 ---
 
 ## Phase A: Authentication & Identity
@@ -196,7 +261,7 @@ Use the primary slogan in: meta description, landing/marketing copy, footer, and
 
 ### 3.A.1 Design
 
-- [ ] **Auth mechanism:** Choose and document: **session-based** (cookie + server-side session store, e.g. Postgres or Redis) **or JWT** (access + optional refresh). Recommendation: sessions for simpler revocation and cookie security (HttpOnly, Secure, SameSite); JWT if you need stateless or multi-service later.
+- [ ] **Auth mechanism:** Choose and document: **session-based** (cookie + server-side session store, e.g. Postgres or Redis) **or JWT** (access + optional refresh). Recommendation: sessions for simpler revocation and cookie security (HttpOnly, Secure, SameSite); JWT if you need stateless or multi-service later. **If JWT is chosen later** (e.g. for mobile or multi-service), apply production JWT requirements: asymmetric signing (RS256/ES256) or validated JWKS endpoint; never trust `alg` from token alone—validate against a whitelist; validate `iss`, `aud`, `exp`, `nbf` with configurable leeway for clock drift; for multi-instance use a shared cache (e.g. Redis) for JWKS/key cache to avoid thundering herd. Reference: [Production JWT in Axum](https://pipinghot.dev/production-ready-jwt-validation-in-axum-a-real-implementation/), crates `axum-jwks` / `axum-jwt-auth`.
 - [ ] **Registration:** Email + password (or OAuth later); password rules (length, complexity); email verification optional but recommended for GTM.
 - [ ] **Login / logout:** Login endpoint returns session cookie or JWT; logout invalidates session or token.
 - [ ] **“Current user”:** Every protected API route resolves user from session/JWT; `user_id` in `estate_plans` (and any user-scoped tables) set and checked.
@@ -209,6 +274,7 @@ Use the primary slogan in: meta description, landing/marketing copy, footer, and
 - [ ] **sessions:** `id` (UUID), `user_id`, `token_hash` or `session_data`, `expires_at`, `created_at` (if session-based).
 - [ ] **estate_plans:** Already has `user_id`; add FK to `users(id)`; backfill existing rows to a default “system” user or migrate data as needed.
 - [ ] Indexes: `users(email)`, `sessions(user_id)`, `sessions(expires_at)`.
+- [ ] **Email verification flow:** Send verification link or code on register (and on email change); optional: restrict sensitive actions until verified (or show banner).
 
 ### 3.A.3 Backend (Rust)
 
@@ -216,7 +282,9 @@ Use the primary slogan in: meta description, landing/marketing copy, footer, and
 - [ ] **Session or JWT:** Implement middleware that extracts user from cookie (session) or `Authorization: Bearer <token>` (JWT) and attaches to request; return 401 when missing or invalid.
 - [ ] **Routes:** Register, login, logout, `GET /api/v1/me`; protect all `/api/v1/*` except health/version with auth middleware.
 - [ ] **Scoping:** Create/update estate plan sets `user_id` from current user; list/get filter by `user_id`; same for beneficiaries via estate_plan ownership.
-- [ ] **Validation:** Email format; password strength; rate limit login (deferred in MVP; add here or in Phase 0 hardening per [GITHUB_SEARCH_RESULTS_AND_ANALYSIS](GITHUB_SEARCH_RESULTS_AND_ANALYSIS.md)).
+- [ ] **Validation:** Email format; password strength.
+- [ ] **Rate limiting (required for GTM):** Apply per-IP rate limits to `POST /auth/login` and `POST /auth/register` (e.g. 5–10 attempts per minute per IP); consider per-email limit for login (e.g. 5 failed attempts per email per 15 minutes) to slow enumeration. Use axum-ratelimit or tower-based middleware; store counters in memory for single-instance or Redis for multi-instance.
+- [ ] **Account lockout (optional, use with care):** If used, combine with rate limiting; avoid long lockouts that enable DoS (e.g. 3–4 failed attempts in 5 minutes → 10–15 minute lockout). Relying only on account lockout can enable DoS (attackers lock out many accounts) and is ineffective against password spraying; prefer rate limiting + strong passwords + optional 2FA.
 - [ ] **Errors:** Use existing RFC 7807 problem details for 401/403 and validation errors.
 
 ### 3.A.4 Frontend
@@ -239,7 +307,8 @@ Use the primary slogan in: meta description, landing/marketing copy, footer, and
 
 - [ ] **Security:** [security_checklist_fallible](checklists/CHECKLISTS_INDEX.md), [api_security_checklist](checklists/CHECKLISTS_INDEX.md); OWASP Auth guidance (password storage, session fixation, CSRF).
 - [ ] **Build:** CSRF protection if using cookie sessions (SameSite, CSRF token for state-changing requests); secure cookie flags (Secure, HttpOnly, SameSite).
-- [ ] **Deferred from GitHub analysis:** JWT pattern (sheroz/axum-rest-api-sample, brix101/rust-rest-boilerplate) can be used if JWT is chosen; rate limiting (axum-ratelimit) recommended for login in production.
+- [ ] **Login and register endpoints:** Rate-limited (per IP and optionally per email); brute-force and DoS considerations documented. Reference: axum-ratelimit or similar; [GITHUB_SEARCH_RESULTS_AND_ANALYSIS](GITHUB_SEARCH_RESULTS_AND_ANALYSIS.md).
+- [ ] **Deferred from GitHub analysis:** JWT pattern (sheroz/axum-rest-api-sample, brix101/rust-rest-boilerplate) can be used if JWT is chosen.
 
 ### 3.A.7 Definition of done (Phase A)
 
@@ -394,6 +463,7 @@ Map each phase and the overall GTM to the [DEVELOPER_CHECKLISTS_UNIVERSAL](../..
 - [ ] Data model and migrations for users, sessions, roles, settings, audit.
 - [ ] API surface defined (auth, /me, admin); document in OpenAPI/Swagger when added ([utoipa](https://github.com/juhaku/utoipa) deferred in MVP; add in GTM per [GITHUB_SEARCH_RESULTS_AND_ANALYSIS](GITHUB_SEARCH_RESULTS_AND_ANALYSIS.md)).
 - [ ] Authentication (session or JWT) and authorization (roles) designed; sensitive data (passwords hashed, no tokens in logs) and error/logging policy.
+- [ ] **Compliance and legal:** Disclaimer (RUFADAA/legal); GDPR retention and user rights (deletion, export) designed.
 
 ## 4.2 Plan (all phases)
 
@@ -429,6 +499,7 @@ Map each phase and the overall GTM to the [DEVELOPER_CHECKLISTS_UNIVERSAL](../..
 - [ ] **Environment:** Env-specific config documented; secrets in secure store; CORS and allowed hosts reviewed.
 - [ ] **Monitoring:** Logging and health checks in production; uptime/health monitoring; alerts for critical failures.
 - [ ] **Compliance – deploy:** TLS in production; data at rest encrypted if required; access to production limited and audited; audit log retention considered.
+- [ ] **BC/DR:** RTO/RPO defined; backups automated and restore tested; runbook includes rollback and incident response.
 
 ---
 
@@ -457,6 +528,11 @@ Map each phase and the overall GTM to the [DEVELOPER_CHECKLISTS_UNIVERSAL](../..
 - **Pagination:** Cursor or offset for admin user list and audit list ([GITHUB_SEARCH_RESULTS_AND_ANALYSIS](GITHUB_SEARCH_RESULTS_AND_ANALYSIS.md)).
 - **RealWorld:** [launchbadge/realworld-axum-sqlx](https://github.com/launchbadge/realworld-axum-sqlx) – API structure and error handling reference.
 
+## 5.5 Compliance
+
+- **RUFADAA:** Digital estate disclaimer (planning tool, not legal advice); see Part 1.5.1.
+- **GDPR:** Retention, lawful basis, user rights (access, erasure, portability); [GDPR checklist](https://gdpr.eu/checklist/) for privacy and retention (see Appendix A).
+
 ---
 
 # Part 6: Risk Register and Rollback
@@ -469,12 +545,18 @@ Map each phase and the overall GTM to the [DEVELOPER_CHECKLISTS_UNIVERSAL](../..
 | Auth design flaw (session vs JWT) | Low | Rework | Document decision and revocation needs early; prefer sessions for first GTM. |
 | Security finding at launch | Medium | Delay | Run security checklists in Phase 0 and after Phase A; fix before go-live. |
 | Server or DB outage | Low | Downtime | Document runbook; backups; health checks and alerts. |
+| Regulatory change (e.g. MiCA, FCA) | Low | Compliance gap | Document "no custody/no VASP" stance; revisit if scope or geography changes. |
+| BCP/DR failure (backup/restore fails) | Low | Data loss or long downtime | Define RTO/RPO; test restore; runbook and owner. |
+| Brute force or DoS on login | Medium | Service abuse or outage | Rate limiting (Phase A); optional lockout with care; monitor failed logins. |
+| Data breach (credential or PII leak) | Low | Reputation, GDPR implications | Minimize PII; hash passwords; no secrets in logs; incident response note in runbook. |
+| Password spraying | Low | Account compromise | Rate limiting; strong password policy; recommend 2FA (Phase C). |
 
 ## 6.2 Rollback
 
 - **Code:** Revert to previous Git tag or release; redeploy previous Docker image or binary.
 - **DB:** Migrations should be additive where possible; have backup before migration; document rollback SQL if a migration must be reverted.
 - **Config:** Keep previous env/config backed up; switch back if new config causes issues.
+- **Incident response:** Document in runbook how to handle suspected breach (revoke sessions, force password reset, notify users if required by law).
 
 ---
 
@@ -494,6 +576,29 @@ Phase E (wallet) remains optional and can follow after GTM launch.
 
 ---
 
+# Part 8: Launch and Activation
+
+## 8.1 Launch phases
+
+- **Pre-launch:** Market/positioning (Legacy Vault = multi-chain estate planning); product readiness (Phases 0–D done); support channel and runbook ready.
+- **Launch preparation:** Marketing/landing copy (slogan, value prop); support process (how users contact, response SLA); pricing if applicable (or "free during beta").
+- **Launch execution:** Go-live checklist (DNS, TLS, health, smoke test); announce to target audience; monitor errors and uptime.
+- **Post-launch:** Measure activation and retention; collect feedback; iterate (see metrics below).
+
+## 8.2 Activation and success metrics
+
+- **Activation definition:** Define "activated" (e.g. user created at least one estate plan, or added at least one beneficiary). This is the "aha moment."
+- **Metrics to track (optional but recommended):** Sign-up rate; T+7 activation rate (e.g. target 18–27% benchmark); time-to-activation (median days; target e.g. &lt; 2 days); onboarding completion (e.g. completed profile or first plan); 30-day retention.
+- **Instrumentation:** If analytics are added (privacy-compliant, consent where required), track signup, first plan created, and retention; otherwise use server-side metrics (count of users with ≥1 plan) for activation.
+
+## 8.3 Customer support
+
+- **Channel:** Email or in-app form; document in plan and in app (footer or help).
+- **Expectations:** Response time (e.g. 48–72 hours for non-urgent); escalation path for security or data incidents.
+- **Cross-reference:** Part 1.5 (Compliance and Legal) customer support checklist item.
+
+---
+
 # Appendix A: Document References
 
 | Document | Purpose |
@@ -504,7 +609,10 @@ Phase E (wallet) remains optional and can follow after GTM launch.
 | [GITHUB_SEARCH_RESULTS_AND_ANALYSIS](GITHUB_SEARCH_RESULTS_AND_ANALYSIS.md) | Repos and patterns (RFC 7807, utoipa, JWT, rate limit, pagination). |
 | [DEPLOY](DEPLOY.md) | Server deploy (Lunaverse, Docker, frontend). |
 | [CHECKLISTS_INDEX](checklists/CHECKLISTS_INDEX.md) | Security, production, SPA, launch checklists. |
+| [GTM_PROGRESS](GTM_PROGRESS.md) | Phase 0–D and branding checklist tracker; update as items complete. |
+| [GTM_LIVE_CHECKLIST](GTM_LIVE_CHECKLIST.md) | **Single source** for multi-agent progress (Stream A: dev, B: branding, C: legal). Update only your stream’s section. |
 | [DEVELOPER_CHECKLISTS_UNIVERSAL](../../Estate_Management/docs/checklists/DEVELOPER_CHECKLISTS_UNIVERSAL.md) | Design, Plan, Build, Test, Deploy (full). |
+| [GDPR checklist](https://gdpr.eu/checklist/) | Privacy and retention audit. |
 
 ---
 

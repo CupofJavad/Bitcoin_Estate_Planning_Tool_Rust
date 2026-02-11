@@ -1,13 +1,18 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import Link from 'next/link'
 import { EstatePlan, estatePlansApi } from '@/lib/api'
+import { useAuth } from '@/context/AuthContext'
 import { EstatePlanList } from '@/components/estate-plan/EstatePlanList'
 import { EstatePlanForm } from '@/components/estate-plan/EstatePlanForm'
 import { Modal } from '@/components/ui/modal'
+import { Button } from '@/components/ui/button'
 import { toast } from '@/components/ui/toast'
+import { LogOut } from 'lucide-react'
 
 export default function Home() {
+  const { user, logout } = useAuth()
   const [estatePlans, setEstatePlans] = useState<EstatePlan[]>([])
   const [loading, setLoading] = useState(true)
   const [isModalOpen, setIsModalOpen] = useState(false)
@@ -75,9 +80,10 @@ export default function Home() {
         })
         toast('Estate plan updated successfully', 'success')
       } else {
+        if (!user) throw new Error('Not logged in')
         await estatePlansApi.create({
           ...data,
-          user_id: 1, // TODO: Get from auth context
+          user_id: user.id,
         })
         toast('Estate plan created successfully', 'success')
       }
@@ -96,24 +102,45 @@ export default function Home() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+      <div className="min-h-screen bg-[#f8fafc] flex items-center justify-center">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-          <p className="text-gray-600">Loading estate plans...</p>
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#0ea5e9] mx-auto mb-4"></div>
+          <p className="text-[#334155]">Loading estate plans...</p>
         </div>
       </div>
     )
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-[#f8fafc]">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Header */}
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold text-gray-900">Multi-Chain Estate Planning</h1>
-          <p className="text-gray-600 mt-2">
-            Estate plans for Bitcoin (BTC), Monero (XMR), and Stacks (STX)—beneficiaries, timelock policies, and payout addresses
-          </p>
+        <div className="mb-8 flex flex-wrap items-center justify-between gap-4">
+          <div>
+            <h1 className="text-3xl font-bold text-[#0f172a]">Legacy Vault</h1>
+            <p className="text-[#334155] mt-2">
+              Secure your crypto for those who come next. Estate plans for Bitcoin (BTC), Monero (XMR), and Stacks (STX).
+            </p>
+          </div>
+          <div className="flex items-center gap-3">
+            {user && (
+              <>
+                <Link href="/account" className="text-sm text-[#0ea5e9] hover:underline">
+                  Account
+                </Link>
+                {user.role === 'admin' && (
+                  <Link href="/admin" className="text-sm text-[#0ea5e9] hover:underline">
+                    Admin
+                  </Link>
+                )}
+                <span className="text-sm text-[#334155]">{user.email}</span>
+                <Button variant="ghost" size="sm" onClick={() => logout().then(() => window.location.assign('/login'))}>
+                  <LogOut className="h-4 w-4 mr-1" />
+                  Sign out
+                </Button>
+              </>
+            )}
+          </div>
         </div>
 
         {/* Estate Plans List */}

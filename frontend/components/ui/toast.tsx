@@ -51,6 +51,9 @@ export function ToastContainer() {
       {currentToasts.map((toast) => (
         <div
           key={toast.id}
+          role="alert"
+          aria-live="assertive"
+          aria-atomic="true"
           className={cn(
             'flex items-center gap-3 px-4 py-3 rounded-lg shadow-lg min-w-[300px] max-w-md',
             {
@@ -65,7 +68,7 @@ export function ToastContainer() {
           {toast.type === 'error' && <XCircle className="h-5 w-5" />}
           {toast.type === 'info' && <Info className="h-5 w-5" />}
           {toast.type === 'warning' && <AlertCircle className="h-5 w-5" />}
-          <p className="flex-1 text-sm font-medium">{toast.message}</p>
+          <p className="flex-1 text-sm font-medium" data-testid="toast-message">{toast.message}</p>
           <button
             onClick={() => {
               toasts = toasts.filter(t => t.id !== toast.id)

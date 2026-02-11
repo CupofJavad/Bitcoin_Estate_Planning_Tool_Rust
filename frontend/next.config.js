@@ -3,6 +3,7 @@ const path = require('path')
 
 const nextConfig = {
   reactStrictMode: true,
+  output: 'standalone',
   outputFileTracingRoot: path.join(__dirname, '../../'),
   webpack: (config, { isServer }) => {
     // Ensure webpack resolves modules from the project's node_modules first

@@ -21,3 +21,5 @@ Checklists are **not** duplicated here. Use the shared knowledge base in this re
 | `awesome_security_checklist.md` | Post-MVP: TLS, headers, auth |
 
 See also `dev_checklists_kb/README.md` for the full index by topic.
+
+**E2E verification:** Run scripted suite and/or MCP per [E2E_TEST_REPORT.md](../E2E_TEST_REPORT.md) §5.

@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="none">
+  <!-- Vault/door shape (rounded rect) + keyhole hint; GTM accent #0ea5e9 -->
+  <rect x="4" y="6" width="24" height="20" rx="3" stroke="#0ea5e9" stroke-width="2.5" fill="none"/>
+  <circle cx="16" cy="14" r="2.5" fill="#0ea5e9"/>
+  <rect x="15" y="14" width="2" height="6" rx="0.5" fill="#0ea5e9"/>
+</svg>

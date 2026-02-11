@@ -1,6 +1,8 @@
-# Bitcoin Estate Planning Platform - Client Portal
+# Legacy Vault — Frontend
 
-Next.js 15+ frontend application for the Bitcoin Estate Planning Platform.
+**Secure your crypto for those who come next.**
+
+Next.js 15+ frontend for Legacy Vault: multi-chain estate planning (Bitcoin, Monero, Stacks). Connects to the Rust API for estate plans, beneficiaries, and timelock policies.
 
 ## Setup
 

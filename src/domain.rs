@@ -1,6 +1,88 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
+use uuid::Uuid;
+
+// ----- Auth (Phase A) -----
+
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+pub struct User {
+    pub id: i32,
+    pub email: String,
+    #[serde(skip_serializing)]
+    pub password_hash: String,
+    pub name: Option<String>,
+    pub email_verified_at: Option<DateTime<Utc>>,
+    pub role: String,
+    #[serde(default)]
+    pub is_active: bool,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+/// Current user profile (no password); for GET /api/v1/me
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MeResponse {
+    pub id: i32,
+    pub email: String,
+    pub name: Option<String>,
+    pub role: String,
+    pub email_verified_at: Option<DateTime<Utc>>,
+    pub created_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+pub struct Session {
+    pub id: Uuid,
+    pub user_id: i32,
+    pub expires_at: DateTime<Utc>,
+    pub created_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct RegisterBody {
+    pub email: String,
+    pub password: String,
+    #[serde(default)]
+    pub name: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct LoginBody {
+    pub email: String,
+    pub password: String,
+}
+
+/// PATCH /api/v1/me — update profile (name, email).
+#[derive(Debug, Clone, Deserialize)]
+pub struct UpdateMeBody {
+    #[serde(default)]
+    pub name: Option<String>,
+    #[serde(default)]
+    pub email: Option<String>,
+}
+
+/// POST /api/v1/me/password — change password.
+#[derive(Debug, Clone, Deserialize)]
+pub struct ChangePasswordBody {
+    pub current_password: String,
+    pub new_password: String,
+}
+
+/// POST /api/v1/me/delete — delete account (requires password).
+#[derive(Debug, Clone, Deserialize)]
+pub struct DeleteAccountBody {
+    pub password: String,
+}
+
+/// PATCH /api/v1/admin/users/:id — admin update user (role, is_active).
+#[derive(Debug, Clone, Deserialize)]
+pub struct AdminUpdateUserBody {
+    pub role: Option<String>,
+    pub is_active: Option<bool>,
+}
+
+// ----- Estate plans -----
 
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
 pub struct EstatePlan {

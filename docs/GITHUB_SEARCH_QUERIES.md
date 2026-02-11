@@ -1,6 +1,6 @@
 # GitHub Search Queries for Borrowing Ideas
 
-Queries to find repos with scripts, code, tools, schemas, SDKs, or patterns that can improve design, features, security, UX, and workflows of the Bitcoin Estate Planning app.
+Queries to find repos with scripts, code, tools, schemas, SDKs, or patterns that can improve design, features, security, UX, and workflows of Legacy Vault (multi-chain estate planning app).
 
 ---
 

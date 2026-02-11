@@ -1,0 +1,50 @@
+# Page snapshot
+
+```yaml
+- generic [active] [ref=e1]:
+  - alert [ref=e2]
+  - main [ref=e3]:
+    - generic [ref=e5]:
+      - generic [ref=e6]:
+        - heading "Legacy Vault" [level=1] [ref=e7]
+        - paragraph [ref=e8]: Secure your crypto for those who come next.
+      - generic [ref=e9]:
+        - heading "Create an account" [level=2] [ref=e10]
+        - generic [ref=e11]:
+          - generic [ref=e12]:
+            - generic [ref=e13]: Email
+            - textbox "Email" [ref=e14]:
+              - /placeholder: you@example.com
+              - text: e2e-1770754872383@test.local
+          - generic [ref=e15]:
+            - generic [ref=e16]: Name (optional)
+            - textbox "Name (optional)" [ref=e17]:
+              - /placeholder: Your name
+              - text: E2E Test User
+          - generic [ref=e18]:
+            - generic [ref=e19]: Password (min 8 characters)
+            - textbox "Password" [ref=e20]: password123
+          - button "Register" [ref=e21] [cursor=pointer]
+        - paragraph [ref=e22]:
+          - text: Already have an account?
+          - link "Sign in" [ref=e23] [cursor=pointer]:
+            - /url: /login
+  - contentinfo [ref=e24]:
+    - generic [ref=e25]:
+      - generic [ref=e26]:
+        - generic [ref=e27]: Legacy Vault – Secure your crypto for those who come next.
+        - generic [ref=e28]:
+          - link "Terms" [ref=e29] [cursor=pointer]:
+            - /url: /terms
+          - link "Privacy" [ref=e30] [cursor=pointer]:
+            - /url: /privacy
+          - link "Data & security" [ref=e31] [cursor=pointer]:
+            - /url: /data
+          - link "Contact" [ref=e32] [cursor=pointer]:
+            - /url: /contact
+      - paragraph [ref=e33]:
+        - text: Digital estate planning tool only — not legal or fiduciary advice. See
+        - link "Terms" [ref=e34] [cursor=pointer]:
+          - /url: /terms
+        - text: for details.
+```

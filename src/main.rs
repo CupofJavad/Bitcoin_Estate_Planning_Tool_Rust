@@ -1,6 +1,9 @@
+use axum::http::header::{ACCEPT, AUTHORIZATION, CONTENT_TYPE, HeaderName, ORIGIN};
+use axum::http::Method;
+use axum::http::HeaderValue;
 use estate_planning_rust::{api, db, logging};
 use std::net::SocketAddr;
-use tower_http::cors::{Any, CorsLayer};
+use tower_http::cors::{AllowHeaders, AllowMethods, AllowOrigin, CorsLayer};
 use tower_http::trace::TraceLayer;
 
 #[tokio::main]
@@ -22,6 +25,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     )
     .await?;
     migrator.run(&pool).await?;
+
+    db::seed_admin_user_if_missing(&pool).await?;
 
     let migration_version: Option<String> = sqlx::query_scalar::<_, i64>(
         "SELECT version FROM _sqlx_migrations ORDER BY version DESC LIMIT 1",
@@ -51,10 +56,48 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
             },
         );
 
+    // Explicit origins and allow_credentials so browser stores Set-Cookie from login/register
+    // (credentials: 'include' requires Access-Control-Allow-Credentials: true and specific origin, not *)
+    // Include 3000 and 3001 so both default Next.js port and alternate port work.
+    // Production: estate.thegeeksnextdoor.com (HTTP and HTTPS for flexibility).
+    let mut allowed_origins = vec![
+        HeaderValue::from_static("http://localhost:3000"),
+        HeaderValue::from_static("http://127.0.0.1:3000"),
+        HeaderValue::from_static("http://localhost:3001"),
+        HeaderValue::from_static("http://127.0.0.1:3001"),
+        HeaderValue::from_static("https://estate.thegeeksnextdoor.com"),
+        HeaderValue::from_static("http://estate.thegeeksnextdoor.com"),
+    ];
+    // Optional extra origins from env (comma-separated), e.g. for staging
+    if let Ok(extra) = std::env::var("CORS_EXTRA_ORIGINS") {
+        for o in extra.split(',') {
+            let o = o.trim();
+            if !o.is_empty() {
+                if let Ok(h) = HeaderValue::from_str(o) {
+                    allowed_origins.push(h);
+                }
+            }
+        }
+    }
+    // With allow_credentials(true), allow_methods and allow_headers cannot be *; use explicit lists.
     let cors = CorsLayer::new()
-        .allow_origin(Any)
-        .allow_methods(Any)
-        .allow_headers(Any);
+        .allow_origin(AllowOrigin::list(allowed_origins))
+        .allow_methods(AllowMethods::list([
+            Method::GET,
+            Method::POST,
+            Method::PUT,
+            Method::PATCH,
+            Method::DELETE,
+            Method::OPTIONS,
+        ]))
+        .allow_headers(AllowHeaders::list([
+            CONTENT_TYPE,
+            ACCEPT,
+            AUTHORIZATION,
+            ORIGIN,
+            HeaderName::from_static("x-requested-with"),
+        ]))
+        .allow_credentials(true);
 
     let app = api::router(pool).layer(trace_layer).layer(cors);
     let addr: SocketAddr = format!("{}:{}", host, port).parse()?;
