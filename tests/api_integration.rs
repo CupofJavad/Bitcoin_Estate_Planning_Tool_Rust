@@ -586,6 +586,26 @@ async fn security_headers_and_openapi_docs() {
         .expect("docs request");
     assert_eq!(docs.status(), 200);
     assert!(docs.text().await.unwrap().contains("Legacy Vault"));
+
+    let ready_res = client
+        .get(format!("http://{}/ready", addr))
+        .send()
+        .await
+        .expect("ready request");
+    assert_eq!(ready_res.status(), 200);
+    let ready: serde_json::Value = ready_res.json().await.expect("ready json");
+    assert_eq!(ready["status"], "ready");
+    assert_eq!(ready["database"], "ok");
+
+    let metrics_res = client
+        .get(format!("http://{}/metrics", addr))
+        .send()
+        .await
+        .expect("metrics request");
+    assert_eq!(metrics_res.status(), 200);
+    let metrics_text = metrics_res.text().await.expect("metrics text");
+    assert!(metrics_text.contains("legacy_vault_http_requests_total"));
+    assert!(metrics_text.contains("legacy_vault_db_pool_connections"));
 }
 
 #[tokio::test]

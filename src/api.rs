@@ -23,9 +23,11 @@ use crate::estate_logic::{
     build_inheritance_packet, compute_heartbeat_status, compute_readiness_report,
 };
 use crate::logging::{audit_log, AuditEvent};
+use crate::metrics;
 use crate::openapi;
 use crate::rate_limit::{self, RateLimitStore};
 use crate::security;
+use axum::extract::DefaultBodyLimit;
 use axum::middleware;
 use serde_json::Value as JsonValue;
 
@@ -78,6 +80,8 @@ pub fn router(pool: PgPool) -> Router {
 
     Router::new()
         .route("/health", get(health))
+        .route("/ready", get(readiness_probe))
+        .route("/metrics", get(prometheus_metrics))
         .route("/version", get(version))
         .route("/api/openapi.json", get(openapi::openapi_json))
         .route("/docs", get(openapi::api_docs_html))
@@ -147,6 +151,8 @@ pub fn router(pool: PgPool) -> Router {
         .route("/api/v1/admin/users", get(admin_list_users))
         .route("/api/v1/admin/users/:id", patch(admin_patch_user))
         .route("/api/v1/admin/audit", get(admin_list_audit))
+        .layer(DefaultBodyLimit::max(2 * 1024 * 1024))
+        .layer(middleware::from_fn(metrics::metrics_middleware))
         .layer(middleware::from_fn(security::security_headers_middleware))
         .with_state(state)
 }
@@ -594,6 +600,66 @@ async fn admin_list_audit(
 
 async fn health() -> impl IntoResponse {
     (StatusCode::OK, "OK")
+}
+
+#[derive(serde::Serialize)]
+struct ReadinessProbeResponse {
+    status: &'static str,
+    database: &'static str,
+    pool_connections: u32,
+    pool_idle: usize,
+    uptime_secs: u64,
+}
+
+async fn readiness_probe(State(pool): State<AppState>) -> impl IntoResponse {
+    let db_ok = sqlx::query_scalar::<_, i32>("SELECT 1")
+        .fetch_one(pool.as_ref())
+        .await
+        .is_ok();
+    let payload = ReadinessProbeResponse {
+        status: if db_ok { "ready" } else { "unavailable" },
+        database: if db_ok { "ok" } else { "error" },
+        pool_connections: pool.size(),
+        pool_idle: pool.num_idle(),
+        uptime_secs: metrics::uptime_secs(),
+    };
+    let status = if db_ok {
+        StatusCode::OK
+    } else {
+        StatusCode::SERVICE_UNAVAILABLE
+    };
+    (status, Json(payload))
+}
+
+async fn prometheus_metrics(State(pool): State<AppState>) -> impl IntoResponse {
+    let plans_count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM estate_plans")
+        .fetch_one(pool.as_ref())
+        .await
+        .unwrap_or(0);
+    let sessions_count: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM sessions WHERE expires_at > now()")
+            .fetch_one(pool.as_ref())
+            .await
+            .unwrap_or(0);
+    let notes_count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM encrypted_vault_notes")
+        .fetch_one(pool.as_ref())
+        .await
+        .unwrap_or(0);
+    let body = metrics::render_prometheus(
+        pool.size(),
+        pool.num_idle(),
+        plans_count,
+        sessions_count,
+        notes_count,
+    );
+    (
+        StatusCode::OK,
+        [(
+            axum::http::header::CONTENT_TYPE,
+            "text/plain; version=0.0.4; charset=utf-8",
+        )],
+        body,
+    )
 }
 
 #[derive(serde::Serialize)]

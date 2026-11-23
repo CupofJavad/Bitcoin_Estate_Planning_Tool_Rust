@@ -1,11 +1,40 @@
-# Deploy Legacy Vault (Estate_Planning_Rust) to Lunaverse
+# Deploy Legacy Vault (Estate_Planning_Rust)
 
-## 0. Phase 0: Requirements and architecture
+## Quickstart: Production-Scale Full-Stack Docker Deployment (Any Linux Host / VPS / Cloud VM)
+
+Legacy Vault ships with a hardened, read-only, non-root 4-service Docker stack in [deploy/docker-compose.prod.yml](../deploy/docker-compose.prod.yml):
+- **PostgreSQL 15** (private internal network only, tuned pool/buffers, persistent volume)
+- **Rust / Axum API** (stripped release binary, `UID 10001`, `read_only`, `cap_drop: ALL`, graceful SIGTERM shutdown, background session janitor, `/ready` DB probe, `/metrics` Prometheus telemetry)
+- **Next.js 15 Standalone Frontend** (Node 22 Alpine, `UID 10001`, `read_only`, `cap_drop: ALL`, same-origin API routing)
+- **Nginx 1.27 Edge Reverse Proxy** (non-root `UID 101`, upstream keepalive, gzip, edge rate limiting, security headers)
+
+```bash
+# 1. Configure production secrets (never commit .env.prod)
+cp deploy/env.production.example .env.prod
+# Edit .env.prod: set strong POSTGRES_PASSWORD, ADMIN_SEED_PASSWORD, PUBLIC_SITE_URL, SECURE_COOKIE=true (behind TLS)
+
+# 2. Build and launch the full production stack
+docker compose --env-file .env.prod -f deploy/docker-compose.prod.yml up -d --build
+
+# 3. Verify health, readiness, security headers, Prometheus metrics, and 100-request concurrent load
+./scripts/prod-verify.sh http://localhost:${EDGE_PORT:-8080}
+
+# 4. Run automated compressed PostgreSQL backup (with SHA-256 seal)
+./scripts/backup-db.sh
+# Restore from backup if needed:
+./scripts/restore-db.sh backups/legacy-vault-<timestamp>.sql.gz
+```
+
+Place a TLS terminator (Caddy, Cloudflare Tunnel, or host Nginx + Let's Encrypt certbot) in front of `EDGE_PORT` and set `SECURE_COOKIE=true` in `.env.prod`.
+
+---
+
+## 0. Phase 0: Requirements and architecture (Lunaverse)
 
 - **Scope:** Server deploy, TLS, env-based config, checklist pass. No new features in Phase 0.
 - **Architecture:** API (Rust/Axum), frontend (Next.js), PostgreSQL; Docker/VM; single region. Frontend can be static export served by nginx or Node.
 - **Security (design):** TLS only in production; no secrets in repo; all config via env (DATABASE_URL, API_HOST/PORT, NEXT_PUBLIC_API_URL, SECURE_COOKIE); CORS and allowed hosts as per GTM; session cookie HttpOnly, Secure in prod.
-- **Observability:** Health (`/health`) and version (`/version`); logging with request ID and audit events; no secrets or PII in logs.
+- **Observability:** Health (`/health`), readiness (`/ready`), Prometheus telemetry (`/metrics`), and version (`/version`); structured logging with request ID and audit events; no secrets or PII in logs.
 
 ### Phase 0: Work breakdown and risks (GTM 3.0.2)
 

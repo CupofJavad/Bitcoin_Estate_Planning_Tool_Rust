@@ -14,23 +14,31 @@ use tracing_subscriber::{EnvFilter, Layer};
 const LOG_DIR: &str = "logs";
 const LOG_FILE: &str = "estate_planning_rust.log";
 
-/// Initialize tracing: stdout + file appender (non-blocking).
+/// Initialize tracing: stdout + optional file appender (non-blocking).
+/// Set LOG_TO_FILE=false in read-only containers for clean 12-factor stdout logging.
 /// Returns a guard that must be held for the process lifetime so logs are flushed.
 pub fn init() -> Option<WorkerGuard> {
     let filter = EnvFilter::try_from_default_env()
         .unwrap_or_else(|_| EnvFilter::new("estate_planning_rust=info,tower_http=info,warn"));
+    let ansi = std::env::var("NO_COLOR").is_err();
+    let log_to_file = std::env::var("LOG_TO_FILE").as_deref() != Ok("false");
 
     // Stdout layer
     let stdout_layer = tracing_subscriber::fmt::layer()
         .with_writer(io::stdout)
-        .with_ansi(true)
+        .with_ansi(ansi)
         .with_target(true)
         .with_level(true)
         .with_span_events(FmtSpan::CLOSE)
         .with_filter(filter.clone());
 
+    if !log_to_file {
+        tracing_subscriber::registry().with(stdout_layer).init();
+        return None;
+    }
+
     // File layer: create logs/ if needed, append to file
-    let file_guard = match std::fs::create_dir_all(LOG_DIR) {
+    match std::fs::create_dir_all(LOG_DIR) {
         Ok(()) => {
             let file_appender = tracing_appender::rolling::never(LOG_DIR, LOG_FILE);
             let (non_blocking, guard) = tracing_appender::non_blocking(file_appender);
@@ -47,14 +55,11 @@ pub fn init() -> Option<WorkerGuard> {
                 .init();
             Some(guard)
         }
-        Err(e) => {
-            eprintln!("Could not create log dir {}: {}", LOG_DIR, e);
+        Err(_) => {
             tracing_subscriber::registry().with(stdout_layer).init();
             None
         }
-    };
-
-    file_guard
+    }
 }
 
 /// Log app and migration version at startup (file version tracking).

@@ -5,7 +5,13 @@
  * On 401, redirects to /login (client-side only).
  */
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
+const RAW_API_URL = process.env.NEXT_PUBLIC_API_URL
+const API_URL =
+  RAW_API_URL === undefined
+    ? 'http://localhost:8000'
+    : RAW_API_URL === 'same-origin'
+    ? ''
+    : RAW_API_URL.replace(/\/$/, '')
 const BASE_URL = `${API_URL}/api/v1`
 
 const DEFAULT_FETCH_OPTIONS: RequestInit = {

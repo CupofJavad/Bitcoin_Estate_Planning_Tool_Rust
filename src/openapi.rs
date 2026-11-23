@@ -31,6 +31,12 @@ pub async fn openapi_json() -> Json<Value> {
             "/health": {
                 "get": { "tags": ["System"], "summary": "Liveness check", "responses": { "200": { "description": "OK" } } }
             },
+            "/ready": {
+                "get": { "tags": ["System"], "summary": "Readiness probe (verifies PostgreSQL connectivity and connection pool health)", "responses": { "200": { "description": "Ready" }, "503": { "description": "Database unavailable" } } }
+            },
+            "/metrics": {
+                "get": { "tags": ["System"], "summary": "Prometheus exposition telemetry metrics", "responses": { "200": { "description": "text/plain Prometheus metrics" } } }
+            },
             "/version": {
                 "get": { "tags": ["System"], "summary": "Application & migration version", "responses": { "200": { "description": "Version metadata" } } }
             },

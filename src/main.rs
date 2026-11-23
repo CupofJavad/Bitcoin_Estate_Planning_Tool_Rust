@@ -3,8 +3,32 @@ use axum::http::HeaderValue;
 use axum::http::Method;
 use estate_planning_rust::{api, db, logging};
 use std::net::SocketAddr;
+use std::time::Duration;
 use tower_http::cors::{AllowHeaders, AllowMethods, AllowOrigin, CorsLayer};
 use tower_http::trace::TraceLayer;
+
+async fn shutdown_signal() {
+    let ctrl_c = async {
+        let _ = tokio::signal::ctrl_c().await;
+    };
+
+    #[cfg(unix)]
+    let terminate = async {
+        if let Ok(mut sig) =
+            tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
+        {
+            sig.recv().await;
+        }
+    };
+
+    #[cfg(not(unix))]
+    let terminate = std::future::pending::<()>();
+
+    tokio::select! {
+        _ = ctrl_c => { tracing::info!("Received Ctrl-C, initiating graceful shutdown"); }
+        _ = terminate => { tracing::info!("Received SIGTERM, initiating graceful shutdown"); }
+    }
+}
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
@@ -27,6 +51,20 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     migrator.run(&pool).await?;
 
     db::seed_admin_user_if_missing(&pool).await?;
+
+    // Background expired-session janitor (runs every 15 minutes)
+    let janitor_pool = pool.clone();
+    tokio::spawn(async move {
+        let mut interval = tokio::time::interval(Duration::from_secs(900));
+        loop {
+            interval.tick().await;
+            match db::prune_expired_sessions(&janitor_pool).await {
+                Ok(n) if n > 0 => tracing::info!(pruned = n, "Pruned expired sessions"),
+                Ok(_) => {}
+                Err(e) => tracing::warn!(error = %e, "Expired session cleanup failed"),
+            }
+        }
+    });
 
     let migration_version: Option<String> = sqlx::query_scalar::<_, i64>(
         "SELECT version FROM _sqlx_migrations ORDER BY version DESC LIMIT 1",
@@ -56,19 +94,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
             },
         );
 
-    // Explicit origins and allow_credentials so browser stores Set-Cookie from login/register
-    // (credentials: 'include' requires Access-Control-Allow-Credentials: true and specific origin, not *)
-    // Include 3000 and 3001 so both default Next.js port and alternate port work.
-    // Production: estate.thegeeksnextdoor.com (HTTP and HTTPS for flexibility).
     let mut allowed_origins = vec![
         HeaderValue::from_static("http://localhost:3000"),
         HeaderValue::from_static("http://127.0.0.1:3000"),
         HeaderValue::from_static("http://localhost:3001"),
         HeaderValue::from_static("http://127.0.0.1:3001"),
+        HeaderValue::from_static("http://localhost:8080"),
+        HeaderValue::from_static("http://127.0.0.1:8080"),
         HeaderValue::from_static("https://estate.thegeeksnextdoor.com"),
         HeaderValue::from_static("http://estate.thegeeksnextdoor.com"),
     ];
-    // Optional extra origins from env (comma-separated), e.g. for staging
     if let Ok(extra) = std::env::var("CORS_EXTRA_ORIGINS") {
         for o in extra.split(',') {
             let o = o.trim();
@@ -79,7 +114,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
             }
         }
     }
-    // With allow_credentials(true), allow_methods and allow_headers cannot be *; use explicit lists.
+
     let cors = CorsLayer::new()
         .allow_origin(AllowOrigin::list(allowed_origins))
         .allow_methods(AllowMethods::list([
@@ -102,6 +137,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let app = api::router(pool).layer(trace_layer).layer(cors);
     let addr: SocketAddr = format!("{}:{}", host, port).parse()?;
     tracing::info!(%addr, "Listening");
-    axum::serve(tokio::net::TcpListener::bind(addr).await?, app).await?;
+    let listener = tokio::net::TcpListener::bind(addr).await?;
+    axum::serve(listener, app)
+        .with_graceful_shutdown(shutdown_signal())
+        .await?;
+    tracing::info!("Server shut down cleanly");
     Ok(())
 }
