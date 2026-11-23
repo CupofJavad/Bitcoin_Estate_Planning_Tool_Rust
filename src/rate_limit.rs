@@ -79,7 +79,9 @@ fn client_ip_from_headers(headers: &axum::http::HeaderMap) -> String {
 }
 
 fn get_store() -> &'static std::sync::Arc<RateLimitStore> {
-    STORE.get().expect("rate_limit::init_store called in api::router")
+    STORE
+        .get()
+        .expect("rate_limit::init_store called in api::router")
 }
 
 /// Axum middleware: rate limit by client IP; return 429 if over limit.

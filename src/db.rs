@@ -12,7 +12,9 @@ pub async fn create_pool(database_url: &str) -> Result<PgPool, sqlx::Error> {
 
 /// Ensures the default admin user exists (email: admin@localhost, password: admin, role: admin).
 /// Safe to run on every startup; only inserts if the user does not exist.
-pub async fn seed_admin_user_if_missing(pool: &PgPool) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+pub async fn seed_admin_user_if_missing(
+    pool: &PgPool,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     const ADMIN_EMAIL: &str = "admin@localhost";
     let exists: Option<(i32,)> = sqlx::query_as("SELECT id FROM users WHERE email = $1")
         .bind(ADMIN_EMAIL)
@@ -31,6 +33,8 @@ pub async fn seed_admin_user_if_missing(pool: &PgPool) -> Result<(), Box<dyn std
     .bind("Admin")
     .execute(pool)
     .await?;
-    tracing::info!("Seeded default admin user (admin@localhost). Change password after first login.");
+    tracing::info!(
+        "Seeded default admin user (admin@localhost). Change password after first login."
+    );
     Ok(())
 }

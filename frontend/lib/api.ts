@@ -37,6 +37,32 @@ async function authFetch(url: string, options: RequestInit = {}): Promise<Respon
   return res
 }
 
+export interface HeartbeatStatus {
+  status: 'healthy' | 'due_soon' | 'grace_period' | 'triggered'
+  heartbeat_interval_days: number
+  grace_period_days: number
+  last_checkin_at: string
+  next_due_at: string
+  grace_ends_at: string
+  days_remaining: number
+  progress_percent: number
+}
+
+export interface ReadinessCheckItem {
+  key: string
+  label: string
+  status: 'pass' | 'warn' | 'fail'
+  points: number
+  max_points: number
+  detail: string
+}
+
+export interface ReadinessReport {
+  score: number
+  grade: string
+  checks: ReadinessCheckItem[]
+}
+
 export interface EstatePlan {
   id: number
   user_id: number
@@ -46,6 +72,9 @@ export interface EstatePlan {
   monero_address: string | null
   stacks_address: string | null
   is_active: boolean
+  heartbeat_interval_days: number
+  last_checkin_at: string
+  grace_period_days: number
   created_at: string
   updated_at: string
 }
@@ -53,6 +82,9 @@ export interface EstatePlan {
 export interface EstatePlanWithRelations extends EstatePlan {
   beneficiaries: Beneficiary[]
   timelock_policies: TimelockPolicy[]
+  heartbeat: HeartbeatStatus
+  readiness: ReadinessReport
+  vault_notes_count: number
 }
 
 export interface Beneficiary {
@@ -111,7 +143,15 @@ export const estatePlansApi = {
     }
   },
 
-  create: async (data: Omit<EstatePlan, 'id' | 'created_at' | 'updated_at'>): Promise<EstatePlan> => {
+  create: async (
+    data: Omit<
+      EstatePlan,
+      'id' | 'created_at' | 'updated_at' | 'last_checkin_at' | 'heartbeat_interval_days' | 'grace_period_days'
+    > & {
+      heartbeat_interval_days?: number
+      grace_period_days?: number
+    }
+  ): Promise<EstatePlan> => {
     const res = await authFetch(`${BASE_URL}/estate-plans`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -284,4 +324,211 @@ export interface AuditEventRow {
   entity_id: number | null
   details: Record<string, unknown> | null
 }
+
+// ----- Legacy Vault v2 APIs -----
+
+export interface AddressValidationResult {
+  valid: boolean
+  chain: string
+  network: string | null
+  address_type: string | null
+  checksum_verified: boolean
+  message: string
+}
+
+export interface TimelockDescriptorRequest {
+  owner_key?: string
+  heir_keys: string[]
+  heir_threshold: number
+  timelock_blocks: number
+  lock_mode: 'csv' | 'cltv'
+  network: 'mainnet' | 'testnet'
+}
+
+export interface TimelockDescriptorResponse {
+  policy: string
+  wsh_descriptor: string
+  taproot_descriptor: string
+  script_asm: string
+  lock_mode: string
+  timelock_blocks: number
+  estimated_days: number
+  estimated_unlock_at: string
+  estimated_witness_vbytes: number
+  network: string
+  recovery_steps: string[]
+}
+
+export interface PlanCheckin {
+  id: number
+  estate_plan_id: number
+  user_id: number
+  note: string | null
+  created_at: string
+}
+
+export interface EncryptedVaultNote {
+  id: number
+  estate_plan_id: number
+  title: string
+  ciphertext_b64: string
+  iv_b64: string
+  salt_b64: string
+  kdf_iterations: number
+  algorithm: string
+  hint: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface PlanDashboardItem {
+  id: number
+  name: string
+  is_active: boolean
+  beneficiary_count: number
+  total_allocation: number
+  timelock_count: number
+  vault_notes_count: number
+  readiness_score: number
+  readiness_grade: string
+  heartbeat: HeartbeatStatus
+  chains: string[]
+}
+
+export interface DashboardSummary {
+  total_plans: number
+  active_plans: number
+  total_beneficiaries: number
+  total_timelocks: number
+  total_vault_notes: number
+  average_readiness_score: number
+  healthy_heartbeats: number
+  attention_needed_heartbeats: number
+  next_checkin_due_at: string | null
+  next_checkin_plan_id: number | null
+  next_checkin_plan_name: string | null
+  chain_coverage: {
+    btc_plans: number
+    xmr_plans: number
+    stx_plans: number
+  }
+  plans: PlanDashboardItem[]
+}
+
+export interface InheritancePacket {
+  schema_version: string
+  generated_at: string
+  integrity_sha256: string
+  plan: EstatePlan
+  heartbeat: HeartbeatStatus
+  readiness: ReadinessReport
+  beneficiaries: Beneficiary[]
+  timelock_policies: Array<{
+    policy: TimelockPolicy
+    descriptor: TimelockDescriptorResponse
+  }>
+  encrypted_vault_notes: EncryptedVaultNote[]
+  recent_checkins: PlanCheckin[]
+  heir_instructions: string[]
+}
+
+export const dashboardApi = {
+  summary: async (): Promise<DashboardSummary> => {
+    const res = await authFetch(`${BASE_URL}/dashboard/summary`)
+    if (!res.ok) await throwApiError(res, 'Failed to fetch dashboard summary')
+    return res.json()
+  },
+}
+
+export const cryptoApi = {
+  validateAddress: async (chain: 'btc' | 'xmr' | 'stx', address: string): Promise<AddressValidationResult> => {
+    const res = await fetch(`${BASE_URL}/crypto/validate-address`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ chain, address }),
+    })
+    if (!res.ok) await throwApiError(res, 'Failed to validate address')
+    return res.json()
+  },
+
+  timelockDescriptor: async (data: TimelockDescriptorRequest): Promise<TimelockDescriptorResponse> => {
+    const res = await fetch(`${BASE_URL}/crypto/timelock-descriptor`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    })
+    if (!res.ok) await throwApiError(res, 'Failed to generate timelock descriptor')
+    return res.json()
+  },
+}
+
+export const heartbeatApi = {
+  checkin: async (
+    planId: number,
+    note?: string
+  ): Promise<{ checkin: PlanCheckin; heartbeat: HeartbeatStatus }> => {
+    const res = await authFetch(`${BASE_URL}/estate-plans/${planId}/checkin`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ note: note || null }),
+    })
+    if (!res.ok) await throwApiError(res, 'Failed to record proof-of-life check-in')
+    return res.json()
+  },
+
+  listCheckins: async (planId: number): Promise<PlanCheckin[]> => {
+    const res = await authFetch(`${BASE_URL}/estate-plans/${planId}/checkins`)
+    if (!res.ok) await throwApiError(res, 'Failed to fetch check-in history')
+    return res.json()
+  },
+
+  readiness: async (planId: number): Promise<ReadinessReport> => {
+    const res = await authFetch(`${BASE_URL}/estate-plans/${planId}/readiness`)
+    if (!res.ok) await throwApiError(res, 'Failed to fetch readiness report')
+    return res.json()
+  },
+
+  inheritancePacket: async (planId: number): Promise<InheritancePacket> => {
+    const res = await authFetch(`${BASE_URL}/estate-plans/${planId}/inheritance-packet`)
+    if (!res.ok) await throwApiError(res, 'Failed to generate inheritance packet')
+    return res.json()
+  },
+}
+
+export const vaultNotesApi = {
+  list: async (planId: number): Promise<EncryptedVaultNote[]> => {
+    const res = await authFetch(`${BASE_URL}/estate-plans/${planId}/vault-notes`)
+    if (!res.ok) await throwApiError(res, 'Failed to fetch encrypted vault notes')
+    return res.json()
+  },
+
+  create: async (
+    planId: number,
+    data: {
+      title: string
+      ciphertext_b64: string
+      iv_b64: string
+      salt_b64: string
+      kdf_iterations: number
+      algorithm: string
+      hint?: string | null
+    }
+  ): Promise<EncryptedVaultNote> => {
+    const res = await authFetch(`${BASE_URL}/estate-plans/${planId}/vault-notes`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    })
+    if (!res.ok) await throwApiError(res, 'Failed to store encrypted vault note')
+    return res.json()
+  },
+
+  delete: async (noteId: number): Promise<void> => {
+    const res = await authFetch(`${BASE_URL}/vault-notes/${noteId}`, { method: 'DELETE' })
+    if (!res.ok) await throwApiError(res, 'Failed to delete encrypted vault note')
+  },
+}
+
+export const API_DOCS_URL = `${API_URL}/docs`
+
 

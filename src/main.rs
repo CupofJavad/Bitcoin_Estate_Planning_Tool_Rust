@@ -1,6 +1,6 @@
-use axum::http::header::{ACCEPT, AUTHORIZATION, CONTENT_TYPE, HeaderName, ORIGIN};
-use axum::http::Method;
+use axum::http::header::{HeaderName, ACCEPT, AUTHORIZATION, CONTENT_TYPE, ORIGIN};
 use axum::http::HeaderValue;
+use axum::http::Method;
 use estate_planning_rust::{api, db, logging};
 use std::net::SocketAddr;
 use tower_http::cors::{AllowHeaders, AllowMethods, AllowOrigin, CorsLayer};

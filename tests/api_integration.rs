@@ -85,43 +85,29 @@ async fn test_app() -> Option<(
     Some((addr, handle))
 }
 
-/// Register, login, and return a client with session cookie. Fails (returns None) if auth fails.
+/// Register, login, and return a client with session cookie for an isolated test user.
 async fn auth_client(addr: std::net::SocketAddr) -> Option<reqwest::Client> {
-    let client = reqwest::Client::builder()
-        .cookie_store(true)
-        .build()
-        .ok()?;
+    let email = format!("test-{}@example.com", uuid::Uuid::new_v4());
+    let client = reqwest::Client::builder().cookie_store(true).build().ok()?;
     let register = serde_json::json!({
-        "email": "test@example.com",
+        "email": email,
         "password": "password1234",
         "name": "Test User"
     });
-    let res = client
+    let _ = client
         .post(format!("http://{}/auth/register", addr))
         .json(&register)
         .send()
         .await
         .ok()?;
-    if res.status() != 201 {
-        let login_res = client
-            .post(format!("http://{}/auth/login", addr))
-            .json(&serde_json::json!({ "email": "test@example.com", "password": "password1234" }))
-            .send()
-            .await
-            .ok()?;
-        if login_res.status() != 200 {
-            return None;
-        }
-    } else {
-        let login_res = client
-            .post(format!("http://{}/auth/login", addr))
-            .json(&serde_json::json!({ "email": "test@example.com", "password": "password1234" }))
-            .send()
-            .await
-            .ok()?;
-        if login_res.status() != 200 {
-            return None;
-        }
+    let login_res = client
+        .post(format!("http://{}/auth/login", addr))
+        .json(&serde_json::json!({ "email": email, "password": "password1234" }))
+        .send()
+        .await
+        .ok()?;
+    if login_res.status() != 200 {
+        return None;
     }
     Some(client)
 }
@@ -170,7 +156,10 @@ async fn auth_register_and_login() {
         eprintln!("SKIP: DATABASE_URL unset or Postgres unreachable");
         return;
     };
-    let client = reqwest::Client::builder().cookie_store(true).build().expect("client");
+    let client = reqwest::Client::builder()
+        .cookie_store(true)
+        .build()
+        .expect("client");
     let register = serde_json::json!({
         "email": "auth_test@example.com",
         "password": "password1234",
@@ -183,15 +172,28 @@ async fn auth_register_and_login() {
         .await
         .expect("register");
     let status = res.status();
-    assert!(status == 201 || status == 400, "register: {} (201 or 400 expected)", res.text().await.unwrap_or_default());
+    assert!(
+        status == 201 || status == 400,
+        "register: {} (201 or 400 expected)",
+        res.text().await.unwrap_or_default()
+    );
     let res = client
         .post(format!("http://{}/auth/login", addr))
         .json(&serde_json::json!({ "email": "auth_test@example.com", "password": "password1234" }))
         .send()
         .await
         .expect("login");
-    assert_eq!(res.status(), 200, "login: {}", res.text().await.unwrap_or_default());
-    let me_res = client.get(format!("http://{}/api/v1/me", addr)).send().await.expect("me");
+    assert_eq!(
+        res.status(),
+        200,
+        "login: {}",
+        res.text().await.unwrap_or_default()
+    );
+    let me_res = client
+        .get(format!("http://{}/api/v1/me", addr))
+        .send()
+        .await
+        .expect("me");
     assert_eq!(me_res.status(), 200);
     let me: serde_json::Value = me_res.json().await.expect("json");
     assert_eq!(me["email"], "auth_test@example.com");
@@ -501,6 +503,7 @@ async fn patch_me_and_change_password() {
     assert_eq!(res.status(), 200);
     let me: serde_json::Value = res.json().await.expect("json");
     assert_eq!(me["name"], "Updated Name");
+    let user_email = me["email"].as_str().expect("email").to_string();
 
     // Change password
     let res = client
@@ -515,10 +518,13 @@ async fn patch_me_and_change_password() {
     assert_eq!(res.status(), 204);
 
     // Login with new password (new client to drop old session cookie)
-    let client2 = reqwest::Client::builder().cookie_store(true).build().expect("client");
+    let client2 = reqwest::Client::builder()
+        .cookie_store(true)
+        .build()
+        .expect("client");
     let res = client2
         .post(format!("http://{}/auth/login", addr))
-        .json(&serde_json::json!({ "email": "test@example.com", "password": "newpassword123" }))
+        .json(&serde_json::json!({ "email": user_email, "password": "newpassword123" }))
         .send()
         .await
         .expect("login with new password");
@@ -539,4 +545,267 @@ async fn admin_list_users_requires_admin() {
         .await
         .expect("request");
     assert_eq!(res.status(), 403, "non-admin should get 403 Forbidden");
+}
+
+#[tokio::test]
+async fn security_headers_and_openapi_docs() {
+    init_tracing_once();
+    let Some((addr, _handle)) = test_app().await else {
+        eprintln!("SKIP: DATABASE_URL unset or Postgres unreachable");
+        return;
+    };
+    let client = reqwest::Client::new();
+    let res = client
+        .get(format!("http://{}/api/openapi.json", addr))
+        .send()
+        .await
+        .expect("openapi request");
+    assert_eq!(res.status(), 200);
+    assert_eq!(
+        res.headers()
+            .get("x-content-type-options")
+            .and_then(|v| v.to_str().ok()),
+        Some("nosniff")
+    );
+    assert_eq!(
+        res.headers()
+            .get("x-frame-options")
+            .and_then(|v| v.to_str().ok()),
+        Some("DENY")
+    );
+    assert!(res.headers().contains_key("x-request-id"));
+
+    let spec: serde_json::Value = res.json().await.expect("openapi json");
+    assert_eq!(spec["openapi"], "3.1.0");
+    assert!(spec["paths"]["/api/v1/estate-plans/{id}/inheritance-packet"].is_object());
+
+    let docs = client
+        .get(format!("http://{}/docs", addr))
+        .send()
+        .await
+        .expect("docs request");
+    assert_eq!(docs.status(), 200);
+    assert!(docs.text().await.unwrap().contains("Legacy Vault"));
+}
+
+#[tokio::test]
+async fn crypto_validate_address_and_descriptor() {
+    init_tracing_once();
+    let Some((addr, _handle)) = test_app().await else {
+        eprintln!("SKIP: DATABASE_URL unset or Postgres unreachable");
+        return;
+    };
+    let client = reqwest::Client::new();
+
+    // Valid Bitcoin Bech32 P2WPKH
+    let btc_res: serde_json::Value = client
+        .post(format!("http://{}/api/v1/crypto/validate-address", addr))
+        .json(&serde_json::json!({
+            "chain": "btc",
+            "address": "bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4"
+        }))
+        .send()
+        .await
+        .expect("btc validate")
+        .json()
+        .await
+        .expect("json");
+    assert_eq!(btc_res["valid"], true);
+    assert_eq!(btc_res["checksum_verified"], true);
+
+    // Invalid Bitcoin checksum
+    let bad_res: serde_json::Value = client
+        .post(format!("http://{}/api/v1/crypto/validate-address", addr))
+        .json(&serde_json::json!({
+            "chain": "btc",
+            "address": "bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t5"
+        }))
+        .send()
+        .await
+        .expect("bad btc validate")
+        .json()
+        .await
+        .expect("json");
+    assert_eq!(bad_res["valid"], false);
+
+    // Miniscript BIP-380 timelock descriptor
+    let desc: serde_json::Value = client
+        .post(format!("http://{}/api/v1/crypto/timelock-descriptor", addr))
+        .json(&serde_json::json!({
+            "owner_key": "xpubOwner/0/*",
+            "heir_keys": ["xpubHeir1/0/*", "xpubHeir2/0/*"],
+            "heir_threshold": 2,
+            "timelock_blocks": 12960,
+            "lock_mode": "csv",
+            "network": "mainnet"
+        }))
+        .send()
+        .await
+        .expect("descriptor")
+        .json()
+        .await
+        .expect("json");
+    assert!(desc["wsh_descriptor"]
+        .as_str()
+        .unwrap()
+        .contains("older(12960)"));
+    assert!(desc["taproot_descriptor"].as_str().unwrap().contains('#'));
+}
+
+#[tokio::test]
+async fn heartbeat_readiness_vault_notes_and_inheritance_packet() {
+    init_tracing_once();
+    let Some((addr, _handle)) = test_app().await else {
+        eprintln!("SKIP: DATABASE_URL unset or Postgres unreachable");
+        return;
+    };
+    let client = auth_client(addr).await.expect("auth client");
+    let base = format!("http://{}/api/v1", addr);
+
+    // 1. Create estate plan with verified BTC + STX addresses and custom heartbeat schedule
+    let plan: serde_json::Value = client
+        .post(format!("{}/estate-plans", base))
+        .json(&serde_json::json!({
+            "name": "Sovereign Family Vault",
+            "description": "Long-term cold storage inheritance vault",
+            "bitcoin_address": "bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4",
+            "stacks_address": "SP2J6ZY48GV1EZ5V2V5RB9MP66SW86PYKKNRV9EJ7",
+            "heartbeat_interval_days": 60,
+            "grace_period_days": 14,
+            "is_active": true
+        }))
+        .send()
+        .await
+        .expect("create plan")
+        .json()
+        .await
+        .expect("plan json");
+    let plan_id = plan["id"].as_i64().unwrap();
+    assert_eq!(plan["heartbeat_interval_days"], 60);
+
+    // 2. Add 100% beneficiary with verified BTC payout address
+    let ben_res = client
+        .post(format!("{}/beneficiaries", base))
+        .json(&serde_json::json!({
+            "estate_plan_id": plan_id,
+            "name": "Elena Vance",
+            "email": "elena@example.com",
+            "bitcoin_address": "bc1p0xlxvlhemja6c4dqv22uapctqupfhlxm9h8z3k2e72q4k9hcz7vqzk5jj0",
+            "allocation_percentage": 100.0
+        }))
+        .send()
+        .await
+        .expect("create beneficiary");
+    assert_eq!(ben_res.status(), 201);
+
+    // 3. Add active timelock policy
+    let tl_res = client
+        .post(format!("{}/timelock-policies", base))
+        .json(&serde_json::json!({
+            "estate_plan_id": plan_id,
+            "name": "6-Month Inactivity CSV Lock",
+            "timelock_blocks": 26280,
+            "trigger_condition": "inactivity",
+            "is_active": true
+        }))
+        .send()
+        .await
+        .expect("create timelock");
+    assert_eq!(tl_res.status(), 201);
+
+    // 4. Record proof-of-life check-in
+    let checkin: serde_json::Value = client
+        .post(format!("{}/estate-plans/{}/checkin", base, plan_id))
+        .json(&serde_json::json!({ "note": "Quarterly hardware wallet verification" }))
+        .send()
+        .await
+        .expect("checkin")
+        .json()
+        .await
+        .expect("checkin json");
+    assert_eq!(checkin["heartbeat"]["status"], "healthy");
+    assert_eq!(
+        checkin["checkin"]["note"],
+        "Quarterly hardware wallet verification"
+    );
+
+    // 5. Store a client-side AES-256-GCM zero-knowledge encrypted note
+    let note: serde_json::Value = client
+        .post(format!("{}/estate-plans/{}/vault-notes", base, plan_id))
+        .json(&serde_json::json!({
+            "title": "Coldcard Safe Deposit Location",
+            "ciphertext_b64": "dGVzdC1jaXBoZXJ0ZXh0LWVuY3J5cHRlZA==",
+            "iv_b64": "MTIzNDU2Nzg5MDEy",
+            "salt_b64": "c2FsdC1ieXRlcy0xMjM0NTY=",
+            "kdf_iterations": 310000,
+            "algorithm": "AES-256-GCM",
+            "hint": "Family wedding city + year"
+        }))
+        .send()
+        .await
+        .expect("create note")
+        .json()
+        .await
+        .expect("note json");
+    let note_id = note["id"].as_i64().unwrap();
+
+    // 6. Verify Readiness Score is 100 (A+)
+    let readiness: serde_json::Value = client
+        .get(format!("{}/estate-plans/{}/readiness", base, plan_id))
+        .send()
+        .await
+        .expect("readiness")
+        .json()
+        .await
+        .expect("readiness json");
+    assert_eq!(readiness["score"], 100);
+    assert_eq!(readiness["grade"], "A+");
+
+    // 7. Verify Inheritance Packet includes SHA-256 integrity digest and compiled Miniscript descriptor
+    let packet: serde_json::Value = client
+        .get(format!(
+            "{}/estate-plans/{}/inheritance-packet",
+            base, plan_id
+        ))
+        .send()
+        .await
+        .expect("packet")
+        .json()
+        .await
+        .expect("packet json");
+    assert_eq!(packet["integrity_sha256"].as_str().unwrap().len(), 64);
+    assert_eq!(packet["timelock_policies"].as_array().unwrap().len(), 1);
+    assert!(
+        packet["timelock_policies"][0]["descriptor"]["wsh_descriptor"]
+            .as_str()
+            .unwrap()
+            .contains("older(26280)")
+    );
+
+    // 8. Verify Dashboard Summary
+    let summary: serde_json::Value = client
+        .get(format!("{}/dashboard/summary", base))
+        .send()
+        .await
+        .expect("summary")
+        .json()
+        .await
+        .expect("summary json");
+    assert!(summary["total_plans"].as_u64().unwrap() >= 1);
+    assert!(summary["chain_coverage"]["btc_plans"].as_u64().unwrap() >= 1);
+
+    // Cleanup note & plan
+    let del_note = client
+        .delete(format!("{}/vault-notes/{}", base, note_id))
+        .send()
+        .await
+        .expect("delete note");
+    assert_eq!(del_note.status(), 204);
+
+    let del_plan = client
+        .delete(format!("{}/estate-plans/{}", base, plan_id))
+        .send()
+        .await
+        .expect("delete plan");
+    assert_eq!(del_plan.status(), 204);
 }

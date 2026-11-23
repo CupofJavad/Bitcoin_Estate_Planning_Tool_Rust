@@ -13,11 +13,20 @@ use sqlx::PgPool;
 use std::sync::Arc;
 use uuid::Uuid;
 
-use axum::middleware;
 use crate::auth::{self, SESSION_COOKIE_NAME, SESSION_DURATION_DAYS};
+use crate::crypto::{
+    self, AddressValidationResult, TimelockDescriptorRequest, TimelockDescriptorResponse,
+    ValidateAddressRequest,
+};
 use crate::domain::*;
+use crate::estate_logic::{
+    build_inheritance_packet, compute_heartbeat_status, compute_readiness_report,
+};
 use crate::logging::{audit_log, AuditEvent};
+use crate::openapi;
 use crate::rate_limit::{self, RateLimitStore};
+use crate::security;
+use axum::middleware;
 use serde_json::Value as JsonValue;
 
 pub type AppState = Arc<PgPool>;
@@ -29,7 +38,10 @@ pub struct CurrentUser(pub User);
 impl FromRequestParts<AppState> for CurrentUser {
     type Rejection = ApiError;
 
-    async fn from_request_parts(parts: &mut Parts, state: &AppState) -> Result<Self, Self::Rejection> {
+    async fn from_request_parts(
+        parts: &mut Parts,
+        state: &AppState,
+    ) -> Result<Self, Self::Rejection> {
         let jar = CookieJar::from_headers(&parts.headers);
         let session_id = jar
             .get(SESSION_COOKIE_NAME)
@@ -67,12 +79,23 @@ pub fn router(pool: PgPool) -> Router {
     Router::new()
         .route("/health", get(health))
         .route("/version", get(version))
+        .route("/api/openapi.json", get(openapi::openapi_json))
+        .route("/docs", get(openapi::api_docs_html))
+        .route(
+            "/api/v1/crypto/validate-address",
+            post(validate_address_endpoint),
+        )
+        .route(
+            "/api/v1/crypto/timelock-descriptor",
+            post(timelock_descriptor_endpoint),
+        )
         .merge(auth_rate_limited)
         .route("/auth/logout", post(logout))
         .route("/api/v1/me", get(me).patch(patch_me))
         .route("/api/v1/me/password", post(change_password))
         .route("/api/v1/me/export", get(me_export))
         .route("/api/v1/me/delete", post(delete_account))
+        .route("/api/v1/dashboard/summary", get(dashboard_summary))
         .route(
             "/api/v1/estate-plans",
             get(list_estate_plans).post(create_estate_plan),
@@ -83,6 +106,24 @@ pub fn router(pool: PgPool) -> Router {
                 .patch(update_estate_plan)
                 .delete(delete_estate_plan),
         )
+        .route(
+            "/api/v1/estate-plans/:id/checkin",
+            post(record_plan_checkin),
+        )
+        .route("/api/v1/estate-plans/:id/checkins", get(list_plan_checkins))
+        .route(
+            "/api/v1/estate-plans/:id/readiness",
+            get(get_plan_readiness),
+        )
+        .route(
+            "/api/v1/estate-plans/:id/inheritance-packet",
+            get(get_inheritance_packet),
+        )
+        .route(
+            "/api/v1/estate-plans/:id/vault-notes",
+            get(list_vault_notes).post(create_vault_note),
+        )
+        .route("/api/v1/vault-notes/:id", delete(delete_vault_note))
         .route(
             "/api/v1/beneficiaries",
             get(list_beneficiaries).post(create_beneficiary),
@@ -106,6 +147,7 @@ pub fn router(pool: PgPool) -> Router {
         .route("/api/v1/admin/users", get(admin_list_users))
         .route("/api/v1/admin/users/:id", patch(admin_patch_user))
         .route("/api/v1/admin/audit", get(admin_list_audit))
+        .layer(middleware::from_fn(security::security_headers_middleware))
         .with_state(state)
 }
 
@@ -120,7 +162,8 @@ async fn register(
             "Email required and password must be at least 8 characters".to_string(),
         ));
     }
-    let password_hash = auth::hash_password(&body.password).map_err(|_| ApiError::BadRequest("Invalid password".to_string()))?;
+    let password_hash = auth::hash_password(&body.password)
+        .map_err(|_| ApiError::BadRequest("Invalid password".to_string()))?;
     let user: User = sqlx::query_as(
         "INSERT INTO users (email, password_hash, name, role) VALUES ($1, $2, $3, 'owner')
          RETURNING id, email, password_hash, name, email_verified_at, role, COALESCE(is_active, true) AS is_active, created_at, updated_at",
@@ -164,7 +207,10 @@ async fn login(
     .fetch_optional(pool.as_ref())
     .await?
     .ok_or(ApiError::Unauthorized)?;
-    if !user.is_active || user.password_hash == "no-login" || !auth::verify_password(&body.password, &user.password_hash).unwrap_or(false) {
+    if !user.is_active
+        || user.password_hash == "no-login"
+        || !auth::verify_password(&body.password, &user.password_hash).unwrap_or(false)
+    {
         return Err(ApiError::Unauthorized);
     }
     let session_id = Uuid::new_v4();
@@ -236,12 +282,11 @@ async fn patch_me(
     CurrentUser(user): CurrentUser,
     Json(body): Json<UpdateMeBody>,
 ) -> Result<Json<MeResponse>, ApiError> {
-    let name = body.name.as_deref().unwrap_or(user.name.as_deref().unwrap_or(""));
-    let email = body
-        .email
+    let name = body
+        .name
         .as_deref()
-        .unwrap_or(&user.email)
-        .to_lowercase();
+        .unwrap_or(user.name.as_deref().unwrap_or(""));
+    let email = body.email.as_deref().unwrap_or(&user.email).to_lowercase();
     if email.is_empty() {
         return Err(ApiError::BadRequest("Email cannot be empty".to_string()));
     }
@@ -291,7 +336,8 @@ async fn change_password(
     if !auth::verify_password(&body.current_password, &current.password_hash).unwrap_or(false) {
         return Err(ApiError::Unauthorized);
     }
-    let new_hash = auth::hash_password(&body.new_password).map_err(|_| ApiError::BadRequest("Invalid new password".to_string()))?;
+    let new_hash = auth::hash_password(&body.new_password)
+        .map_err(|_| ApiError::BadRequest("Invalid new password".to_string()))?;
     sqlx::query("UPDATE users SET password_hash = $1, updated_at = now() WHERE id = $2")
         .bind(&new_hash)
         .bind(user.id)
@@ -311,7 +357,7 @@ async fn me_export(
     CurrentUser(user): CurrentUser,
 ) -> Result<Json<ExportResponse>, ApiError> {
     let plans = sqlx::query_as::<_, EstatePlan>(
-        "SELECT id, user_id, name, description, bitcoin_address, monero_address, stacks_address, is_active, created_at, updated_at FROM estate_plans WHERE user_id = $1 ORDER BY id",
+        "SELECT id, user_id, name, description, bitcoin_address, monero_address, stacks_address, is_active, heartbeat_interval_days, last_checkin_at, grace_period_days, created_at, updated_at FROM estate_plans WHERE user_id = $1 ORDER BY id",
     )
     .bind(user.id)
     .fetch_all(pool.as_ref())
@@ -330,10 +376,22 @@ async fn me_export(
         .bind(plan.id)
         .fetch_all(pool.as_ref())
         .await?;
+        let vault_notes_count: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM encrypted_vault_notes WHERE estate_plan_id = $1",
+        )
+        .bind(plan.id)
+        .fetch_one(pool.as_ref())
+        .await?;
+        let heartbeat = compute_heartbeat_status(&plan);
+        let readiness =
+            compute_readiness_report(&plan, &beneficiaries, &timelock_policies, vault_notes_count);
         estate_plans.push(EstatePlanWithRelations {
             plan,
             beneficiaries,
             timelock_policies,
+            heartbeat,
+            readiness,
+            vault_notes_count,
         });
     }
     Ok(Json(ExportResponse {
@@ -418,7 +476,9 @@ async fn admin_patch_user(
         return Err(ApiError::Forbidden);
     }
     if body.role.is_none() && body.is_active.is_none() {
-        return Err(ApiError::BadRequest("Provide role and/or is_active".to_string()));
+        return Err(ApiError::BadRequest(
+            "Provide role and/or is_active".to_string(),
+        ));
     }
     let valid_roles = ["owner", "executor", "admin"];
     if let Some(ref r) = body.role {
@@ -430,7 +490,9 @@ async fn admin_patch_user(
         }
     }
     if admin.id == id && body.is_active == Some(false) {
-        return Err(ApiError::BadRequest("Cannot deactivate your own account".to_string()));
+        return Err(ApiError::BadRequest(
+            "Cannot deactivate your own account".to_string(),
+        ));
     }
     let row = sqlx::query_as::<_, AdminUserSummary>(
         "UPDATE users SET role = COALESCE($1, role), is_active = COALESCE($2, is_active), updated_at = now()
@@ -511,18 +573,16 @@ async fn admin_list_audit(
         LIMIT $6
         "#,
     )
-    .bind(
-        filter
-            .from
-            .as_ref()
-            .and_then(|s| chrono::DateTime::parse_from_rfc3339(s).ok().map(|dt| dt.with_timezone(&Utc))),
-    )
-    .bind(
-        filter
-            .to
-            .as_ref()
-            .and_then(|s| chrono::DateTime::parse_from_rfc3339(s).ok().map(|dt| dt.with_timezone(&Utc))),
-    )
+    .bind(filter.from.as_ref().and_then(|s| {
+        chrono::DateTime::parse_from_rfc3339(s)
+            .ok()
+            .map(|dt| dt.with_timezone(&Utc))
+    }))
+    .bind(filter.to.as_ref().and_then(|s| {
+        chrono::DateTime::parse_from_rfc3339(s)
+            .ok()
+            .map(|dt| dt.with_timezone(&Utc))
+    }))
     .bind(filter.user_id)
     .bind(filter.action.as_deref())
     .bind(filter.entity_type.as_deref())
@@ -556,18 +616,191 @@ async fn version(State(pool): State<AppState>) -> Json<VersionResponse> {
     })
 }
 
+// ----- Crypto Primitives (v2) -----
+
+async fn validate_address_endpoint(
+    Json(body): Json<ValidateAddressRequest>,
+) -> Json<AddressValidationResult> {
+    Json(crypto::validate_address(&body.chain, &body.address))
+}
+
+async fn timelock_descriptor_endpoint(
+    Json(body): Json<TimelockDescriptorRequest>,
+) -> Json<TimelockDescriptorResponse> {
+    Json(crypto::build_timelock_descriptor(&body))
+}
+
+// ----- Dashboard Summary (v2) -----
+
+async fn dashboard_summary(
+    State(pool): State<AppState>,
+    CurrentUser(user): CurrentUser,
+) -> Result<Json<DashboardSummary>, ApiError> {
+    let plans = sqlx::query_as::<_, EstatePlan>(
+        "SELECT id, user_id, name, description, bitcoin_address, monero_address, stacks_address, is_active, heartbeat_interval_days, last_checkin_at, grace_period_days, created_at, updated_at
+         FROM estate_plans WHERE user_id = $1 ORDER BY id",
+    )
+    .bind(user.id)
+    .fetch_all(pool.as_ref())
+    .await?;
+
+    let mut total_beneficiaries = 0usize;
+    let mut total_timelocks = 0usize;
+    let mut total_vault_notes = 0usize;
+    let mut readiness_sum: u32 = 0;
+    let mut healthy_heartbeats = 0usize;
+    let mut attention_needed_heartbeats = 0usize;
+    let mut next_due: Option<(chrono::DateTime<Utc>, i32, String)> = None;
+    let mut btc_plans = 0usize;
+    let mut xmr_plans = 0usize;
+    let mut stx_plans = 0usize;
+    let mut active_plans = 0usize;
+    let mut items = Vec::with_capacity(plans.len());
+
+    for plan in &plans {
+        if plan.is_active {
+            active_plans += 1;
+        }
+        let beneficiaries = sqlx::query_as::<_, Beneficiary>(
+            "SELECT id, estate_plan_id, name, email, bitcoin_address, monero_address, stacks_address, allocation_percentage::float8 AS allocation_percentage, created_at, updated_at
+             FROM beneficiaries WHERE estate_plan_id = $1 ORDER BY id",
+        )
+        .bind(plan.id)
+        .fetch_all(pool.as_ref())
+        .await?;
+
+        let policies = sqlx::query_as::<_, TimelockPolicy>(
+            "SELECT id, estate_plan_id, name, description, timelock_blocks, trigger_condition, is_active, created_at, updated_at
+             FROM timelock_policies WHERE estate_plan_id = $1 ORDER BY id",
+        )
+        .bind(plan.id)
+        .fetch_all(pool.as_ref())
+        .await?;
+
+        let vault_notes_count: i64 = sqlx::query_scalar(
+            "SELECT COUNT(*) FROM encrypted_vault_notes WHERE estate_plan_id = $1",
+        )
+        .bind(plan.id)
+        .fetch_one(pool.as_ref())
+        .await?;
+
+        let heartbeat = compute_heartbeat_status(plan);
+        let readiness =
+            compute_readiness_report(plan, &beneficiaries, &policies, vault_notes_count);
+
+        total_beneficiaries += beneficiaries.len();
+        total_timelocks += policies.len();
+        total_vault_notes += vault_notes_count as usize;
+        readiness_sum += u32::from(readiness.score);
+
+        if heartbeat.status == "healthy" {
+            healthy_heartbeats += 1;
+        } else {
+            attention_needed_heartbeats += 1;
+        }
+
+        if plan.is_active {
+            match &next_due {
+                None => next_due = Some((heartbeat.next_due_at, plan.id, plan.name.clone())),
+                Some((dt, _, _)) if heartbeat.next_due_at < *dt => {
+                    next_due = Some((heartbeat.next_due_at, plan.id, plan.name.clone()));
+                }
+                _ => {}
+            }
+        }
+
+        let mut chains = Vec::new();
+        if plan
+            .bitcoin_address
+            .as_deref()
+            .map(str::trim)
+            .is_some_and(|s| !s.is_empty())
+        {
+            btc_plans += 1;
+            chains.push("BTC".to_string());
+        }
+        if plan
+            .monero_address
+            .as_deref()
+            .map(str::trim)
+            .is_some_and(|s| !s.is_empty())
+        {
+            xmr_plans += 1;
+            chains.push("XMR".to_string());
+        }
+        if plan
+            .stacks_address
+            .as_deref()
+            .map(str::trim)
+            .is_some_and(|s| !s.is_empty())
+        {
+            stx_plans += 1;
+            chains.push("STX".to_string());
+        }
+
+        let total_allocation: f64 = beneficiaries.iter().map(|b| b.allocation_percentage).sum();
+
+        items.push(PlanDashboardItem {
+            id: plan.id,
+            name: plan.name.clone(),
+            is_active: plan.is_active,
+            beneficiary_count: beneficiaries.len(),
+            total_allocation,
+            timelock_count: policies.len(),
+            vault_notes_count: vault_notes_count as usize,
+            readiness_score: readiness.score,
+            readiness_grade: readiness.grade,
+            heartbeat,
+            chains,
+        });
+    }
+
+    let average_readiness_score = if plans.is_empty() {
+        0
+    } else {
+        (readiness_sum / plans.len() as u32) as u8
+    };
+
+    let (next_checkin_due_at, next_checkin_plan_id, next_checkin_plan_name) = match next_due {
+        Some((dt, pid, pname)) => (Some(dt), Some(pid), Some(pname)),
+        None => (None, None, None),
+    };
+
+    Ok(Json(DashboardSummary {
+        total_plans: plans.len(),
+        active_plans,
+        total_beneficiaries,
+        total_timelocks,
+        total_vault_notes,
+        average_readiness_score,
+        healthy_heartbeats,
+        attention_needed_heartbeats,
+        next_checkin_due_at,
+        next_checkin_plan_id,
+        next_checkin_plan_name,
+        chain_coverage: ChainCoverage {
+            btc_plans,
+            xmr_plans,
+            stx_plans,
+        },
+        plans: items,
+    }))
+}
+
 // ----- Estate plans -----
+
+const ESTATE_PLAN_COLS: &str = "id, user_id, name, description, bitcoin_address, monero_address, stacks_address, is_active, heartbeat_interval_days, last_checkin_at, grace_period_days, created_at, updated_at";
 
 async fn list_estate_plans(
     State(pool): State<AppState>,
     CurrentUser(user): CurrentUser,
 ) -> Result<Json<Vec<EstatePlan>>, ApiError> {
-    let rows = sqlx::query_as::<_, EstatePlan>(
-        "SELECT id, user_id, name, description, bitcoin_address, monero_address, stacks_address, is_active, created_at, updated_at FROM estate_plans WHERE user_id = $1 ORDER BY id",
-    )
-    .bind(user.id)
-    .fetch_all(pool.as_ref())
-    .await?;
+    let query =
+        format!("SELECT {ESTATE_PLAN_COLS} FROM estate_plans WHERE user_id = $1 ORDER BY id");
+    let rows = sqlx::query_as::<_, EstatePlan>(&query)
+        .bind(user.id)
+        .fetch_all(pool.as_ref())
+        .await?;
     Ok(Json(rows))
 }
 
@@ -576,14 +809,14 @@ async fn get_estate_plan(
     CurrentUser(user): CurrentUser,
     Path(id): Path<i32>,
 ) -> Result<Json<EstatePlanWithRelations>, ApiError> {
-    let plan = sqlx::query_as::<_, EstatePlan>(
-        "SELECT id, user_id, name, description, bitcoin_address, monero_address, stacks_address, is_active, created_at, updated_at FROM estate_plans WHERE id = $1 AND user_id = $2",
-    )
-    .bind(id)
-    .bind(user.id)
-    .fetch_optional(pool.as_ref())
-    .await?
-    .ok_or(ApiError::NotFound)?;
+    let query =
+        format!("SELECT {ESTATE_PLAN_COLS} FROM estate_plans WHERE id = $1 AND user_id = $2");
+    let plan = sqlx::query_as::<_, EstatePlan>(&query)
+        .bind(id)
+        .bind(user.id)
+        .fetch_optional(pool.as_ref())
+        .await?
+        .ok_or(ApiError::NotFound)?;
 
     let beneficiaries = sqlx::query_as::<_, Beneficiary>(
         "SELECT id, estate_plan_id, name, email, bitcoin_address, monero_address, stacks_address, allocation_percentage::float8 AS allocation_percentage, created_at, updated_at FROM beneficiaries WHERE estate_plan_id = $1 ORDER BY id",
@@ -599,10 +832,23 @@ async fn get_estate_plan(
     .fetch_all(pool.as_ref())
     .await?;
 
+    let vault_notes_count: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM encrypted_vault_notes WHERE estate_plan_id = $1")
+            .bind(id)
+            .fetch_one(pool.as_ref())
+            .await?;
+
+    let heartbeat = compute_heartbeat_status(&plan);
+    let readiness =
+        compute_readiness_report(&plan, &beneficiaries, &timelock_policies, vault_notes_count);
+
     Ok(Json(EstatePlanWithRelations {
         plan,
         beneficiaries,
         timelock_policies,
+        heartbeat,
+        readiness,
+        vault_notes_count,
     }))
 }
 
@@ -611,18 +857,25 @@ async fn create_estate_plan(
     CurrentUser(user): CurrentUser,
     Json(body): Json<CreateEstatePlan>,
 ) -> Result<(StatusCode, Json<EstatePlan>), ApiError> {
-    let row = sqlx::query_as::<_, EstatePlan>(
-        "INSERT INTO estate_plans (user_id, name, description, bitcoin_address, monero_address, stacks_address, is_active) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id, user_id, name, description, bitcoin_address, monero_address, stacks_address, is_active, created_at, updated_at",
-    )
-    .bind(user.id)
-    .bind(&body.name)
-    .bind(&body.description)
-    .bind(&body.bitcoin_address)
-    .bind(&body.monero_address)
-    .bind(&body.stacks_address)
-    .bind(body.is_active)
-    .fetch_one(pool.as_ref())
-    .await?;
+    let heartbeat_interval_days = body.heartbeat_interval_days.clamp(7, 3650);
+    let grace_period_days = body.grace_period_days.clamp(1, 365);
+    let query = format!(
+        "INSERT INTO estate_plans (user_id, name, description, bitcoin_address, monero_address, stacks_address, is_active, heartbeat_interval_days, grace_period_days)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+         RETURNING {ESTATE_PLAN_COLS}"
+    );
+    let row = sqlx::query_as::<_, EstatePlan>(&query)
+        .bind(user.id)
+        .bind(&body.name)
+        .bind(&body.description)
+        .bind(&body.bitcoin_address)
+        .bind(&body.monero_address)
+        .bind(&body.stacks_address)
+        .bind(body.is_active)
+        .bind(heartbeat_interval_days)
+        .bind(grace_period_days)
+        .fetch_one(pool.as_ref())
+        .await?;
     audit_log(AuditEvent::EstatePlanCreated {
         id: row.id,
         name: row.name.clone(),
@@ -645,7 +898,9 @@ async fn update_estate_plan(
     Path(id): Path<i32>,
     Json(body): Json<UpdateEstatePlan>,
 ) -> Result<Json<EstatePlan>, ApiError> {
-    let existing = sqlx::query_as::<_, EstatePlan>("SELECT id, user_id, name, description, bitcoin_address, monero_address, stacks_address, is_active, created_at, updated_at FROM estate_plans WHERE id = $1 AND user_id = $2")
+    let select_q =
+        format!("SELECT {ESTATE_PLAN_COLS} FROM estate_plans WHERE id = $1 AND user_id = $2");
+    let existing = sqlx::query_as::<_, EstatePlan>(&select_q)
         .bind(id)
         .bind(user.id)
         .fetch_optional(pool.as_ref())
@@ -658,21 +913,41 @@ async fn update_estate_plan(
     let monero_address = body.monero_address.or(existing.monero_address);
     let stacks_address = body.stacks_address.or(existing.stacks_address);
     let is_active = body.is_active.unwrap_or(existing.is_active);
+    let heartbeat_interval_days = body
+        .heartbeat_interval_days
+        .unwrap_or(existing.heartbeat_interval_days)
+        .clamp(7, 3650);
+    let grace_period_days = body
+        .grace_period_days
+        .unwrap_or(existing.grace_period_days)
+        .clamp(1, 365);
 
-    let row = sqlx::query_as::<_, EstatePlan>(
-        "UPDATE estate_plans SET name = $1, description = $2, bitcoin_address = $3, monero_address = $4, stacks_address = $5, is_active = $6 WHERE id = $7 RETURNING id, user_id, name, description, bitcoin_address, monero_address, stacks_address, is_active, created_at, updated_at",
-    )
-    .bind(name)
-    .bind(&description)
-    .bind(&bitcoin_address)
-    .bind(&monero_address)
-    .bind(&stacks_address)
-    .bind(is_active)
-    .bind(id)
-    .fetch_one(pool.as_ref())
-    .await?;
+    let update_q = format!(
+        "UPDATE estate_plans SET name = $1, description = $2, bitcoin_address = $3, monero_address = $4, stacks_address = $5, is_active = $6, heartbeat_interval_days = $7, grace_period_days = $8
+         WHERE id = $9 RETURNING {ESTATE_PLAN_COLS}"
+    );
+    let row = sqlx::query_as::<_, EstatePlan>(&update_q)
+        .bind(name)
+        .bind(&description)
+        .bind(&bitcoin_address)
+        .bind(&monero_address)
+        .bind(&stacks_address)
+        .bind(is_active)
+        .bind(heartbeat_interval_days)
+        .bind(grace_period_days)
+        .bind(id)
+        .fetch_one(pool.as_ref())
+        .await?;
     audit_log(AuditEvent::EstatePlanUpdated { id });
-    record_audit_event(pool.as_ref(), user.id, "updated", "estate_plan", Some(id), None).await;
+    record_audit_event(
+        pool.as_ref(),
+        user.id,
+        "updated",
+        "estate_plan",
+        Some(id),
+        None,
+    )
+    .await;
     Ok(Json(row))
 }
 
@@ -690,7 +965,291 @@ async fn delete_estate_plan(
         return Err(ApiError::NotFound);
     }
     audit_log(AuditEvent::EstatePlanDeleted { id });
-    record_audit_event(pool.as_ref(), user.id, "deleted", "estate_plan", Some(id), None).await;
+    record_audit_event(
+        pool.as_ref(),
+        user.id,
+        "deleted",
+        "estate_plan",
+        Some(id),
+        None,
+    )
+    .await;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+// ----- Heartbeat Check-ins, Readiness, Inheritance Packet, & Zero-Knowledge Vault Notes -----
+
+#[derive(Debug, serde::Serialize)]
+struct CheckinResponse {
+    checkin: PlanCheckin,
+    heartbeat: HeartbeatStatus,
+}
+
+async fn record_plan_checkin(
+    State(pool): State<AppState>,
+    CurrentUser(user): CurrentUser,
+    Path(id): Path<i32>,
+    body: Option<Json<CreateCheckinBody>>,
+) -> Result<Json<CheckinResponse>, ApiError> {
+    let note = body.and_then(|Json(b)| b.note);
+    let update_q = format!(
+        "UPDATE estate_plans SET last_checkin_at = now() WHERE id = $1 AND user_id = $2 RETURNING {ESTATE_PLAN_COLS}"
+    );
+    let plan = sqlx::query_as::<_, EstatePlan>(&update_q)
+        .bind(id)
+        .bind(user.id)
+        .fetch_optional(pool.as_ref())
+        .await?
+        .ok_or(ApiError::NotFound)?;
+
+    let checkin = sqlx::query_as::<_, PlanCheckin>(
+        "INSERT INTO plan_checkins (estate_plan_id, user_id, note) VALUES ($1, $2, $3)
+         RETURNING id, estate_plan_id, user_id, note, created_at",
+    )
+    .bind(id)
+    .bind(user.id)
+    .bind(&note)
+    .fetch_one(pool.as_ref())
+    .await?;
+
+    record_audit_event(
+        pool.as_ref(),
+        user.id,
+        "checkin",
+        "estate_plan",
+        Some(id),
+        Some(serde_json::json!({ "checkin_id": checkin.id, "note": note })),
+    )
+    .await;
+
+    let heartbeat = compute_heartbeat_status(&plan);
+    Ok(Json(CheckinResponse { checkin, heartbeat }))
+}
+
+async fn list_plan_checkins(
+    State(pool): State<AppState>,
+    CurrentUser(user): CurrentUser,
+    Path(id): Path<i32>,
+) -> Result<Json<Vec<PlanCheckin>>, ApiError> {
+    let owner: Option<i32> = sqlx::query_scalar("SELECT user_id FROM estate_plans WHERE id = $1")
+        .bind(id)
+        .fetch_optional(pool.as_ref())
+        .await?;
+    if owner != Some(user.id) {
+        return Err(ApiError::NotFound);
+    }
+    let rows = sqlx::query_as::<_, PlanCheckin>(
+        "SELECT id, estate_plan_id, user_id, note, created_at
+         FROM plan_checkins WHERE estate_plan_id = $1 ORDER BY created_at DESC LIMIT 50",
+    )
+    .bind(id)
+    .fetch_all(pool.as_ref())
+    .await?;
+    Ok(Json(rows))
+}
+
+async fn get_plan_readiness(
+    State(pool): State<AppState>,
+    CurrentUser(user): CurrentUser,
+    Path(id): Path<i32>,
+) -> Result<Json<ReadinessReport>, ApiError> {
+    let query =
+        format!("SELECT {ESTATE_PLAN_COLS} FROM estate_plans WHERE id = $1 AND user_id = $2");
+    let plan = sqlx::query_as::<_, EstatePlan>(&query)
+        .bind(id)
+        .bind(user.id)
+        .fetch_optional(pool.as_ref())
+        .await?
+        .ok_or(ApiError::NotFound)?;
+
+    let beneficiaries = sqlx::query_as::<_, Beneficiary>(
+        "SELECT id, estate_plan_id, name, email, bitcoin_address, monero_address, stacks_address, allocation_percentage::float8 AS allocation_percentage, created_at, updated_at FROM beneficiaries WHERE estate_plan_id = $1 ORDER BY id",
+    )
+    .bind(id)
+    .fetch_all(pool.as_ref())
+    .await?;
+
+    let policies = sqlx::query_as::<_, TimelockPolicy>(
+        "SELECT id, estate_plan_id, name, description, timelock_blocks, trigger_condition, is_active, created_at, updated_at FROM timelock_policies WHERE estate_plan_id = $1 ORDER BY id",
+    )
+    .bind(id)
+    .fetch_all(pool.as_ref())
+    .await?;
+
+    let vault_notes_count: i64 =
+        sqlx::query_scalar("SELECT COUNT(*) FROM encrypted_vault_notes WHERE estate_plan_id = $1")
+            .bind(id)
+            .fetch_one(pool.as_ref())
+            .await?;
+
+    Ok(Json(compute_readiness_report(
+        &plan,
+        &beneficiaries,
+        &policies,
+        vault_notes_count,
+    )))
+}
+
+async fn get_inheritance_packet(
+    State(pool): State<AppState>,
+    CurrentUser(user): CurrentUser,
+    Path(id): Path<i32>,
+) -> Result<Json<InheritancePacket>, ApiError> {
+    let query =
+        format!("SELECT {ESTATE_PLAN_COLS} FROM estate_plans WHERE id = $1 AND user_id = $2");
+    let plan = sqlx::query_as::<_, EstatePlan>(&query)
+        .bind(id)
+        .bind(user.id)
+        .fetch_optional(pool.as_ref())
+        .await?
+        .ok_or(ApiError::NotFound)?;
+
+    let beneficiaries = sqlx::query_as::<_, Beneficiary>(
+        "SELECT id, estate_plan_id, name, email, bitcoin_address, monero_address, stacks_address, allocation_percentage::float8 AS allocation_percentage, created_at, updated_at FROM beneficiaries WHERE estate_plan_id = $1 ORDER BY id",
+    )
+    .bind(id)
+    .fetch_all(pool.as_ref())
+    .await?;
+
+    let policies = sqlx::query_as::<_, TimelockPolicy>(
+        "SELECT id, estate_plan_id, name, description, timelock_blocks, trigger_condition, is_active, created_at, updated_at FROM timelock_policies WHERE estate_plan_id = $1 ORDER BY id",
+    )
+    .bind(id)
+    .fetch_all(pool.as_ref())
+    .await?;
+
+    let notes = sqlx::query_as::<_, EncryptedVaultNote>(
+        "SELECT id, estate_plan_id, title, ciphertext_b64, iv_b64, salt_b64, kdf_iterations, algorithm, hint, created_at, updated_at
+         FROM encrypted_vault_notes WHERE estate_plan_id = $1 ORDER BY id",
+    )
+    .bind(id)
+    .fetch_all(pool.as_ref())
+    .await?;
+
+    let checkins = sqlx::query_as::<_, PlanCheckin>(
+        "SELECT id, estate_plan_id, user_id, note, created_at
+         FROM plan_checkins WHERE estate_plan_id = $1 ORDER BY created_at DESC LIMIT 10",
+    )
+    .bind(id)
+    .fetch_all(pool.as_ref())
+    .await?;
+
+    record_audit_event(
+        pool.as_ref(),
+        user.id,
+        "exported_packet",
+        "estate_plan",
+        Some(id),
+        None,
+    )
+    .await;
+
+    Ok(Json(build_inheritance_packet(
+        plan,
+        beneficiaries,
+        policies,
+        notes,
+        checkins,
+    )))
+}
+
+async fn list_vault_notes(
+    State(pool): State<AppState>,
+    CurrentUser(user): CurrentUser,
+    Path(id): Path<i32>,
+) -> Result<Json<Vec<EncryptedVaultNote>>, ApiError> {
+    let owner: Option<i32> = sqlx::query_scalar("SELECT user_id FROM estate_plans WHERE id = $1")
+        .bind(id)
+        .fetch_optional(pool.as_ref())
+        .await?;
+    if owner != Some(user.id) {
+        return Err(ApiError::NotFound);
+    }
+    let rows = sqlx::query_as::<_, EncryptedVaultNote>(
+        "SELECT id, estate_plan_id, title, ciphertext_b64, iv_b64, salt_b64, kdf_iterations, algorithm, hint, created_at, updated_at
+         FROM encrypted_vault_notes WHERE estate_plan_id = $1 ORDER BY created_at DESC",
+    )
+    .bind(id)
+    .fetch_all(pool.as_ref())
+    .await?;
+    Ok(Json(rows))
+}
+
+async fn create_vault_note(
+    State(pool): State<AppState>,
+    CurrentUser(user): CurrentUser,
+    Path(id): Path<i32>,
+    Json(body): Json<CreateVaultNoteBody>,
+) -> Result<(StatusCode, Json<EncryptedVaultNote>), ApiError> {
+    let owner: Option<i32> = sqlx::query_scalar("SELECT user_id FROM estate_plans WHERE id = $1")
+        .bind(id)
+        .fetch_optional(pool.as_ref())
+        .await?;
+    if owner != Some(user.id) {
+        return Err(ApiError::NotFound);
+    }
+    if body.title.trim().is_empty()
+        || body.ciphertext_b64.trim().is_empty()
+        || body.iv_b64.trim().is_empty()
+        || body.salt_b64.trim().is_empty()
+    {
+        return Err(ApiError::BadRequest(
+            "Title, ciphertext_b64, iv_b64, and salt_b64 are required".to_string(),
+        ));
+    }
+    let row = sqlx::query_as::<_, EncryptedVaultNote>(
+        "INSERT INTO encrypted_vault_notes (estate_plan_id, title, ciphertext_b64, iv_b64, salt_b64, kdf_iterations, algorithm, hint)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+         RETURNING id, estate_plan_id, title, ciphertext_b64, iv_b64, salt_b64, kdf_iterations, algorithm, hint, created_at, updated_at",
+    )
+    .bind(id)
+    .bind(body.title.trim())
+    .bind(body.ciphertext_b64.trim())
+    .bind(body.iv_b64.trim())
+    .bind(body.salt_b64.trim())
+    .bind(body.kdf_iterations.max(100_000))
+    .bind(body.algorithm.trim())
+    .bind(&body.hint)
+    .fetch_one(pool.as_ref())
+    .await?;
+
+    record_audit_event(
+        pool.as_ref(),
+        user.id,
+        "created",
+        "vault_note",
+        Some(row.id),
+        Some(serde_json::json!({ "estate_plan_id": id, "algorithm": row.algorithm })),
+    )
+    .await;
+
+    Ok((StatusCode::CREATED, Json(row)))
+}
+
+async fn delete_vault_note(
+    State(pool): State<AppState>,
+    CurrentUser(user): CurrentUser,
+    Path(id): Path<i32>,
+) -> Result<StatusCode, ApiError> {
+    let result = sqlx::query(
+        "DELETE FROM encrypted_vault_notes WHERE id = $1 AND estate_plan_id IN (SELECT id FROM estate_plans WHERE user_id = $2)",
+    )
+    .bind(id)
+    .bind(user.id)
+    .execute(pool.as_ref())
+    .await?;
+    if result.rows_affected() == 0 {
+        return Err(ApiError::NotFound);
+    }
+    record_audit_event(
+        pool.as_ref(),
+        user.id,
+        "deleted",
+        "vault_note",
+        Some(id),
+        None,
+    )
+    .await;
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -780,10 +1339,11 @@ async fn create_beneficiary(
     CurrentUser(user): CurrentUser,
     Json(body): Json<CreateBeneficiary>,
 ) -> Result<(StatusCode, Json<Beneficiary>), ApiError> {
-    let plan_owner: Option<i32> = sqlx::query_scalar("SELECT user_id FROM estate_plans WHERE id = $1")
-        .bind(body.estate_plan_id)
-        .fetch_optional(pool.as_ref())
-        .await?;
+    let plan_owner: Option<i32> =
+        sqlx::query_scalar("SELECT user_id FROM estate_plans WHERE id = $1")
+            .bind(body.estate_plan_id)
+            .fetch_optional(pool.as_ref())
+            .await?;
     if plan_owner.as_ref() != Some(&user.id) {
         return Err(ApiError::NotFound);
     }
@@ -864,7 +1424,15 @@ async fn update_beneficiary(
     .fetch_one(pool.as_ref())
     .await?;
     audit_log(AuditEvent::BeneficiaryUpdated { id });
-    record_audit_event(pool.as_ref(), user.id, "updated", "beneficiary", Some(id), None).await;
+    record_audit_event(
+        pool.as_ref(),
+        user.id,
+        "updated",
+        "beneficiary",
+        Some(id),
+        None,
+    )
+    .await;
     Ok(Json(row))
 }
 
@@ -884,7 +1452,15 @@ async fn delete_beneficiary(
         return Err(ApiError::NotFound);
     }
     audit_log(AuditEvent::BeneficiaryDeleted { id });
-    record_audit_event(pool.as_ref(), user.id, "deleted", "beneficiary", Some(id), None).await;
+    record_audit_event(
+        pool.as_ref(),
+        user.id,
+        "deleted",
+        "beneficiary",
+        Some(id),
+        None,
+    )
+    .await;
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -943,10 +1519,11 @@ async fn create_timelock_policy(
     CurrentUser(user): CurrentUser,
     Json(body): Json<CreateTimelockPolicy>,
 ) -> Result<(StatusCode, Json<TimelockPolicy>), ApiError> {
-    let plan_owner: Option<i32> = sqlx::query_scalar("SELECT user_id FROM estate_plans WHERE id = $1")
-        .bind(body.estate_plan_id)
-        .fetch_optional(pool.as_ref())
-        .await?;
+    let plan_owner: Option<i32> =
+        sqlx::query_scalar("SELECT user_id FROM estate_plans WHERE id = $1")
+            .bind(body.estate_plan_id)
+            .fetch_optional(pool.as_ref())
+            .await?;
     if plan_owner.as_ref() != Some(&user.id) {
         return Err(ApiError::NotFound);
     }
@@ -1011,7 +1588,15 @@ async fn update_timelock_policy(
     .fetch_one(pool.as_ref())
     .await?;
     audit_log(AuditEvent::TimelockPolicyUpdated { id });
-    record_audit_event(pool.as_ref(), user.id, "updated", "timelock_policy", Some(id), None).await;
+    record_audit_event(
+        pool.as_ref(),
+        user.id,
+        "updated",
+        "timelock_policy",
+        Some(id),
+        None,
+    )
+    .await;
     Ok(Json(row))
 }
 
@@ -1031,7 +1616,15 @@ async fn delete_timelock_policy(
         return Err(ApiError::NotFound);
     }
     audit_log(AuditEvent::TimelockPolicyDeleted { id });
-    record_audit_event(pool.as_ref(), user.id, "deleted", "timelock_policy", Some(id), None).await;
+    record_audit_event(
+        pool.as_ref(),
+        user.id,
+        "deleted",
+        "timelock_policy",
+        Some(id),
+        None,
+    )
+    .await;
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -1078,7 +1671,9 @@ impl IntoResponse for ApiError {
             ApiError::Unauthorized => (
                 StatusCode::UNAUTHORIZED,
                 ProblemDetails {
-                    r#type: Some("https://api.estateplanning.dev/problems/unauthorized".to_string()),
+                    r#type: Some(
+                        "https://api.estateplanning.dev/problems/unauthorized".to_string(),
+                    ),
                     title: "Unauthorized".to_string(),
                     detail: "Authentication required".to_string(),
                     status: 401,
