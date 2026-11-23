@@ -1,9 +1,11 @@
 'use client'
 
-import { useState, useEffect } from 'react'
-import { useForm } from 'react-hook-form'
+import { useEffect } from 'react'
+import { useForm, Controller } from 'react-hook-form'
 import { Beneficiary } from '@/lib/api'
 import { Button } from '@/components/ui/button'
+import { toast } from '@/components/ui/toast'
+import { AddressInput } from '@/components/crypto/AddressInput'
 
 interface BeneficiaryFormData {
   name: string
@@ -23,15 +25,21 @@ interface BeneficiaryFormProps {
   isLoading?: boolean
 }
 
-export function BeneficiaryForm({ 
-  beneficiary, 
-  estatePlanId, 
+export function BeneficiaryForm({
+  beneficiary,
   totalAllocation,
-  onSubmit, 
-  onCancel, 
-  isLoading 
+  onSubmit,
+  onCancel,
+  isLoading,
 }: BeneficiaryFormProps) {
-  const { register, handleSubmit, formState: { errors }, watch, reset } = useForm<BeneficiaryFormData>({
+  const {
+    register,
+    control,
+    handleSubmit,
+    formState: { errors },
+    watch,
+    reset,
+  } = useForm<BeneficiaryFormData>({
     defaultValues: {
       name: beneficiary?.name || '',
       email: beneficiary?.email || '',
@@ -42,9 +50,11 @@ export function BeneficiaryForm({
     },
   })
 
-  const allocationPercentage = watch('allocation_percentage')
-  const remainingAllocation = 100 - totalAllocation + (beneficiary?.allocation_percentage || 0)
-  const maxAllocation = remainingAllocation
+  const allocationPercentage = Number(watch('allocation_percentage') || 0)
+  const remainingAllocation = Math.max(
+    0,
+    100 - totalAllocation + (beneficiary?.allocation_percentage || 0)
+  )
 
   useEffect(() => {
     if (beneficiary) {
@@ -60,148 +70,151 @@ export function BeneficiaryForm({
   }, [beneficiary, reset])
 
   const onSubmitForm = async (data: BeneficiaryFormData) => {
-    // Validate total allocation doesn't exceed 100%
-    const newTotal = totalAllocation - (beneficiary?.allocation_percentage || 0) + data.allocation_percentage
-    if (newTotal > 100) {
-      alert(`Total allocation cannot exceed 100%. Maximum allowed: ${maxAllocation.toFixed(2)}%`)
+    const pct = Number(data.allocation_percentage)
+    const newTotal = totalAllocation - (beneficiary?.allocation_percentage || 0) + pct
+    if (newTotal > 100.001) {
+      toast(
+        `Total allocation cannot exceed 100%. Maximum available: ${remainingAllocation.toFixed(2)}%`,
+        'error'
+      )
       return
     }
-    await onSubmit(data)
+    await onSubmit({ ...data, allocation_percentage: pct })
   }
 
   return (
     <form onSubmit={handleSubmit(onSubmitForm)} className="space-y-4">
-      <div>
-        <label htmlFor="name" className="block text-sm font-medium text-[#334155] mb-1">
-          Name <span className="text-[#ef4444]">*</span>
-        </label>
-        <input
-          id="name"
-          type="text"
-          {...register('name', { required: 'Name is required' })}
-          className="w-full px-3 py-2 border border-[#e2e8f0] rounded-md focus:outline-none focus:ring-2 focus:ring-[#0ea5e9]"
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <div>
+          <label htmlFor="ben-name" className="mb-1 block text-xs font-semibold uppercase tracking-wider text-[#4b505a]">
+            Heir / Beneficiary Name <span className="text-[#b91c1c]">*</span>
+          </label>
+          <input
+            id="ben-name"
+            type="text"
+            {...register('name', { required: 'Name is required' })}
+            placeholder="Full legal name"
+            className="lv-input"
+          />
+          {errors.name && <p className="mt-1 text-xs text-[#b91c1c]">{errors.name.message}</p>}
+        </div>
+
+        <div>
+          <label htmlFor="ben-email" className="mb-1 block text-xs font-semibold uppercase tracking-wider text-[#4b505a]">
+            Contact Email
+          </label>
+          <input
+            id="ben-email"
+            type="email"
+            {...register('email', {
+              pattern: {
+                value: /^[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}$/i,
+                message: 'Invalid email address',
+              },
+            })}
+            placeholder="heir@example.com"
+            className="lv-input"
+          />
+          {errors.email && <p className="mt-1 text-xs text-[#b91c1c]">{errors.email.message}</p>}
+        </div>
+      </div>
+
+      <div className="rounded-xl border border-[#e3ddd1] bg-[#faf8f4] p-4 space-y-3">
+        <p className="text-xs font-semibold uppercase tracking-wider text-[#7c7465]">
+          Heir Payout Addresses (Verified On-the-Fly)
+        </p>
+        <Controller
+          control={control}
+          name="bitcoin_address"
+          render={({ field }) => (
+            <AddressInput
+              id="ben_bitcoin_address"
+              chain="btc"
+              label="Bitcoin (BTC) Payout Address"
+              placeholder="bc1q... or bc1p..."
+              value={field.value}
+              onChange={field.onChange}
+            />
+          )}
         />
-        {errors.name && (
-          <p className="mt-1 text-sm text-[#ef4444]">{errors.name.message}</p>
-        )}
-      </div>
-
-      <div>
-        <label htmlFor="email" className="block text-sm font-medium text-[#334155] mb-1">
-          Email
-        </label>
-        <input
-          id="email"
-          type="email"
-          {...register('email', {
-            pattern: {
-              value: /^[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}$/i,
-              message: 'Invalid email address',
-            },
-          })}
-          className="w-full px-3 py-2 border border-[#e2e8f0] rounded-md focus:outline-none focus:ring-2 focus:ring-[#0ea5e9]"
+        <Controller
+          control={control}
+          name="monero_address"
+          render={({ field }) => (
+            <AddressInput
+              id="ben_monero_address"
+              chain="xmr"
+              label="Monero (XMR) Payout Address"
+              placeholder="4... or 8..."
+              value={field.value}
+              onChange={field.onChange}
+            />
+          )}
         />
-        {errors.email && (
-          <p className="mt-1 text-sm text-[#ef4444]">{errors.email.message}</p>
-        )}
-      </div>
-
-      <div className="space-y-2">
-        <div>
-          <label htmlFor="bitcoin_address" className="block text-sm font-medium text-[#334155] mb-1">
-            Bitcoin (BTC) Address
-          </label>
-          <input
-            id="bitcoin_address"
-            type="text"
-            {...register('bitcoin_address')}
-            placeholder="bc1q... or 1..."
-            className="w-full px-3 py-2 border border-[#e2e8f0] rounded-md focus:outline-none focus:ring-2 focus:ring-[#0ea5e9] font-mono text-sm"
-          />
-        </div>
-        <div>
-          <label htmlFor="monero_address" className="block text-sm font-medium text-[#334155] mb-1">
-            Monero (XMR) Address
-          </label>
-          <input
-            id="monero_address"
-            type="text"
-            {...register('monero_address')}
-            placeholder="4... or 8..."
-            className="w-full px-3 py-2 border border-[#e2e8f0] rounded-md focus:outline-none focus:ring-2 focus:ring-[#0ea5e9] font-mono text-sm"
-          />
-        </div>
-        <div>
-          <label htmlFor="stacks_address" className="block text-sm font-medium text-[#334155] mb-1">
-            Stacks (STX) Address
-          </label>
-          <input
-            id="stacks_address"
-            type="text"
-            {...register('stacks_address')}
-            placeholder="SP... or ST..."
-            className="w-full px-3 py-2 border border-[#e2e8f0] rounded-md focus:outline-none focus:ring-2 focus:ring-[#0ea5e9] font-mono text-sm"
-          />
-        </div>
+        <Controller
+          control={control}
+          name="stacks_address"
+          render={({ field }) => (
+            <AddressInput
+              id="ben_stacks_address"
+              chain="stx"
+              label="Stacks (STX) Payout Address"
+              placeholder="SP... or SM..."
+              value={field.value}
+              onChange={field.onChange}
+            />
+          )}
+        />
       </div>
 
       <div>
-        <label htmlFor="allocation_percentage" className="block text-sm font-medium text-[#334155] mb-1">
-          Allocation Percentage <span className="text-[#ef4444]">*</span>
-        </label>
+        <div className="mb-1 flex items-center justify-between">
+          <label htmlFor="allocation_percentage" className="text-xs font-semibold uppercase tracking-wider text-[#4b505a]">
+            Estate Allocation (%) <span className="text-[#b91c1c]">*</span>
+          </label>
+          <span className="text-xs font-medium text-[#a87b24]">
+            Available: {remainingAllocation.toFixed(2)}%
+          </span>
+        </div>
         <div className="flex items-center gap-3">
           <input
             id="allocation_percentage"
             type="number"
             step="0.01"
             min="0"
-            max={maxAllocation}
+            max={remainingAllocation}
             {...register('allocation_percentage', {
               required: 'Allocation percentage is required',
+              valueAsNumber: true,
               min: { value: 0, message: 'Must be at least 0%' },
-              max: { value: maxAllocation, message: `Maximum ${maxAllocation.toFixed(2)}% available` },
+              max: {
+                value: remainingAllocation,
+                message: `Maximum ${remainingAllocation.toFixed(2)}% available`,
+              },
             })}
-            className="flex-1 px-3 py-2 border border-[#e2e8f0] rounded-md focus:outline-none focus:ring-2 focus:ring-[#0ea5e9]"
+            className="lv-input"
           />
-          <span className="text-[#334155]">%</span>
+          <span className="font-semibold text-[#4b505a]">%</span>
         </div>
         {errors.allocation_percentage && (
-          <p className="mt-1 text-sm text-[#ef4444]">{errors.allocation_percentage.message}</p>
+          <p className="mt-1 text-xs text-[#b91c1c]">{errors.allocation_percentage.message}</p>
         )}
-        <p className="mt-1 text-xs text-[#334155]">
-          Remaining allocation: {remainingAllocation.toFixed(2)}%
-        </p>
-        {allocationPercentage && (
-          <div className="mt-2">
-            <div className="w-full bg-[#e2e8f0] rounded-full h-2">
-              <div
-                className="bg-[#0ea5e9] h-2 rounded-full transition-all"
-                style={{ width: `${Math.min(allocationPercentage, 100)}%` }}
-              />
-            </div>
-          </div>
-        )}
+        <div className="mt-2 h-2 w-full overflow-hidden rounded-full bg-[#e8e2d5]">
+          <div
+            className="h-full rounded-full bg-[#a87b24] transition-all duration-200"
+            style={{ width: `${Math.min(Math.max(allocationPercentage, 0), 100)}%` }}
+          />
+        </div>
       </div>
 
-      <div className="flex gap-3 pt-4">
-        <Button
-          type="submit"
-          disabled={isLoading}
-          className="flex-1"
-        >
-          {isLoading ? 'Saving...' : beneficiary ? 'Update' : 'Create'}
+      <div className="flex gap-3 pt-3">
+        <Button type="submit" disabled={isLoading} className="flex-1">
+          {isLoading ? 'Saving…' : beneficiary ? 'Update Beneficiary' : 'Add Beneficiary'}
         </Button>
-        <Button
-          type="button"
-          variant="outline"
-          onClick={onCancel}
-          disabled={isLoading}
-          className="flex-1"
-        >
+        <Button type="button" variant="outline" onClick={onCancel} disabled={isLoading} className="flex-1">
           Cancel
         </Button>
       </div>
     </form>
   )
 }
-

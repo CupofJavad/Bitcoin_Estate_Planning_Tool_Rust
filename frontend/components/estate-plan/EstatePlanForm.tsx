@@ -1,16 +1,19 @@
 'use client'
 
-import { useState, useEffect } from 'react'
-import { useForm } from 'react-hook-form'
+import { useEffect } from 'react'
+import { useForm, Controller } from 'react-hook-form'
 import { EstatePlan } from '@/lib/api'
 import { Button } from '@/components/ui/button'
+import { AddressInput } from '@/components/crypto/AddressInput'
 
-interface EstatePlanFormData {
+export interface EstatePlanFormData {
   name: string
   description: string
   bitcoin_address: string
   monero_address: string
   stacks_address: string
+  heartbeat_interval_days: number
+  grace_period_days: number
   is_active: boolean
 }
 
@@ -21,14 +24,27 @@ interface EstatePlanFormProps {
   isLoading?: boolean
 }
 
-export function EstatePlanForm({ estatePlan, onSubmit, onCancel, isLoading }: EstatePlanFormProps) {
-  const { register, handleSubmit, formState: { errors }, reset } = useForm<EstatePlanFormData>({
+export function EstatePlanForm({
+  estatePlan,
+  onSubmit,
+  onCancel,
+  isLoading,
+}: EstatePlanFormProps) {
+  const {
+    register,
+    control,
+    handleSubmit,
+    formState: { errors },
+    reset,
+  } = useForm<EstatePlanFormData>({
     defaultValues: {
       name: estatePlan?.name || '',
       description: estatePlan?.description || '',
       bitcoin_address: estatePlan?.bitcoin_address || '',
       monero_address: estatePlan?.monero_address || '',
       stacks_address: estatePlan?.stacks_address || '',
+      heartbeat_interval_days: estatePlan?.heartbeat_interval_days ?? 90,
+      grace_period_days: estatePlan?.grace_period_days ?? 14,
       is_active: estatePlan?.is_active ?? true,
     },
   })
@@ -41,117 +57,156 @@ export function EstatePlanForm({ estatePlan, onSubmit, onCancel, isLoading }: Es
         bitcoin_address: estatePlan.bitcoin_address || '',
         monero_address: estatePlan.monero_address || '',
         stacks_address: estatePlan.stacks_address || '',
+        heartbeat_interval_days: estatePlan.heartbeat_interval_days ?? 90,
+        grace_period_days: estatePlan.grace_period_days ?? 14,
         is_active: estatePlan.is_active,
       })
     }
   }, [estatePlan, reset])
 
   const onSubmitForm = async (data: EstatePlanFormData) => {
-    await onSubmit(data)
+    await onSubmit({
+      ...data,
+      heartbeat_interval_days: Number(data.heartbeat_interval_days) || 90,
+      grace_period_days: Number(data.grace_period_days) || 14,
+    })
   }
 
   return (
     <form onSubmit={handleSubmit(onSubmitForm)} className="space-y-4">
       <div>
-        <label htmlFor="name" className="block text-sm font-medium text-gray-700 mb-1">
-          Name <span className="text-red-500">*</span>
+        <label htmlFor="plan-name" className="mb-1 block text-xs font-semibold uppercase tracking-wider text-[#4b505a]">
+          Vault Name <span className="text-[#b91c1c]">*</span>
         </label>
         <input
-          id="name"
+          id="plan-name"
+          data-testid="plan-name-input"
           type="text"
-          {...register('name', { required: 'Name is required' })}
-          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+          placeholder="e.g., Family Cold Storage Trust"
+          {...register('name', { required: 'Vault name is required' })}
+          className="lv-input"
         />
-        {errors.name && (
-          <p className="mt-1 text-sm text-red-600">{errors.name.message}</p>
-        )}
+        {errors.name && <p className="mt-1 text-xs text-[#b91c1c]">{errors.name.message}</p>}
       </div>
 
       <div>
-        <label htmlFor="description" className="block text-sm font-medium text-gray-700 mb-1">
-          Description
+        <label htmlFor="plan-description" className="mb-1 block text-xs font-semibold uppercase tracking-wider text-[#4b505a]">
+          Custody Notes / Purpose
         </label>
         <textarea
-          id="description"
+          id="plan-description"
           {...register('description')}
-          rows={3}
-          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+          rows={2}
+          placeholder="High-level summary of hardware custody setup and scope"
+          className="lv-input"
         />
       </div>
 
-      <div className="space-y-3">
-        <div>
-          <label htmlFor="bitcoin_address" className="block text-sm font-medium text-gray-700 mb-1">
-            Bitcoin (BTC) Address
-          </label>
-          <input
-            id="bitcoin_address"
-            type="text"
-            {...register('bitcoin_address')}
-            placeholder="bc1q... or 1..."
-            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono text-sm"
-          />
-        </div>
-        <div>
-          <label htmlFor="monero_address" className="block text-sm font-medium text-gray-700 mb-1">
-            Monero (XMR) Address
-          </label>
-          <input
-            id="monero_address"
-            type="text"
-            {...register('monero_address')}
-            placeholder="4... or 8..."
-            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono text-sm"
-          />
-        </div>
-        <div>
-          <label htmlFor="stacks_address" className="block text-sm font-medium text-gray-700 mb-1">
-            Stacks (STX) Address
-          </label>
-          <input
-            id="stacks_address"
-            type="text"
-            {...register('stacks_address')}
-            placeholder="SP... or ST..."
-            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono text-sm"
-          />
-        </div>
-        <p className="text-xs text-gray-500">
-          Optional: enter payout addresses for each network (BTC, XMR, STX).
+      <div className="rounded-xl border border-[#e3ddd1] bg-[#faf8f4] p-4 space-y-3">
+        <p className="text-xs font-semibold uppercase tracking-wider text-[#7c7465]">
+          Multi-Chain Vault Addresses (Live Cryptographic Verification)
         </p>
+        <Controller
+          control={control}
+          name="bitcoin_address"
+          render={({ field }) => (
+            <AddressInput
+              id="bitcoin_address"
+              chain="btc"
+              label="Bitcoin (BTC)"
+              placeholder="bc1q... / bc1p... / 1... / 3..."
+              value={field.value}
+              onChange={field.onChange}
+            />
+          )}
+        />
+        <Controller
+          control={control}
+          name="monero_address"
+          render={({ field }) => (
+            <AddressInput
+              id="monero_address"
+              chain="xmr"
+              label="Monero (XMR)"
+              placeholder="4... or 8... (95-char CryptoNote)"
+              value={field.value}
+              onChange={field.onChange}
+            />
+          )}
+        />
+        <Controller
+          control={control}
+          name="stacks_address"
+          render={({ field }) => (
+            <AddressInput
+              id="stacks_address"
+              chain="stx"
+              label="Stacks (STX)"
+              placeholder="SP... or SM... (c32check)"
+              value={field.value}
+              onChange={field.onChange}
+            />
+          )}
+        />
       </div>
 
-      <div className="flex items-center">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <div>
+          <label
+            htmlFor="heartbeat_interval_days"
+            className="mb-1 block text-xs font-semibold uppercase tracking-wider text-[#4b505a]"
+          >
+            Proof-of-Life Interval (Days)
+          </label>
+          <input
+            id="heartbeat_interval_days"
+            type="number"
+            min={7}
+            max={3650}
+            {...register('heartbeat_interval_days', { valueAsNumber: true })}
+            className="lv-input"
+          />
+          <p className="mt-1 text-[11px] text-[#575d68]">How often you check in (default: 90 days).</p>
+        </div>
+        <div>
+          <label
+            htmlFor="grace_period_days"
+            className="mb-1 block text-xs font-semibold uppercase tracking-wider text-[#4b505a]"
+          >
+            Grace Period (Days)
+          </label>
+          <input
+            id="grace_period_days"
+            type="number"
+            min={1}
+            max={365}
+            {...register('grace_period_days', { valueAsNumber: true })}
+            className="lv-input"
+          />
+          <p className="mt-1 text-[11px] text-[#575d68]">Buffer after missed check-in before trigger.</p>
+        </div>
+      </div>
+
+      <div className="flex items-center gap-2 pt-1">
         <input
           id="is_active"
           type="checkbox"
           {...register('is_active')}
-          className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+          className="h-4 w-4 rounded border-[#cfc7b6] text-[#a87b24] focus:ring-[#a87b24]"
         />
-        <label htmlFor="is_active" className="ml-2 block text-sm text-gray-700">
-          Active
+        <label htmlFor="is_active" className="text-sm font-medium text-[#16181d]">
+          Vault Active (monitored by heartbeat schedule)
         </label>
       </div>
 
-      <div className="flex gap-3 pt-4">
-        <Button
-          type="submit"
-          disabled={isLoading}
-          className="flex-1"
-        >
-          {isLoading ? 'Saving...' : estatePlan ? 'Update' : 'Create'}
+      <div className="flex gap-3 pt-3">
+        <Button type="submit" variant="primary" disabled={isLoading} className="flex-1" data-testid="plan-submit-btn">
+          {isLoading ? 'Saving…' : estatePlan ? 'Save Vault Changes' : 'Create Estate Plan'}
         </Button>
-        <Button
-          type="button"
-          variant="outline"
-          onClick={onCancel}
-          disabled={isLoading}
-          className="flex-1"
-        >
+        <Button type="button" variant="outline" onClick={onCancel} disabled={isLoading} className="flex-1">
           Cancel
         </Button>
       </div>
     </form>
   )
 }
-

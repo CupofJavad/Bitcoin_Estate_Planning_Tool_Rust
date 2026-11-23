@@ -3,24 +3,89 @@
 @tailwind utilities;
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --lv-canvas: #f6f4ef;
+  --lv-surface: #ffffff;
+  --lv-surface-muted: #f0ece3;
+  --lv-obsidian: #13161b;
+  --lv-obsidian-soft: #1c2129;
+  --lv-border: #e3ddd1;
+  --lv-border-strong: #cfc7b6;
+  --lv-ink: #16181d;
+  --lv-ink-muted: #575d68;
+  --lv-brass: #a87b24;
+  --lv-brass-light: #d6b15e;
+  --lv-emerald: #136f4a;
+  --lv-amber: #b45309;
+  --lv-crimson: #b91c1c;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+html {
+  background-color: var(--lv-canvas);
+  color: var(--lv-ink);
 }
 
 body {
-  color: var(--foreground);
-  background: var(--background);
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
-    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
-    sans-serif;
+  color: var(--lv-ink);
+  background-color: var(--lv-canvas);
+  font-family: var(--font-sans), -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
 
+.font-serif-display {
+  font-family: var(--font-serif), Georgia, 'Times New Roman', serif;
+  letter-spacing: -0.015em;
+}
+
+.font-mono-code {
+  font-family: var(--font-mono), ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+/* Vault card surface with subtle physical depth */
+.lv-card {
+  background: var(--lv-surface);
+  border: 1px solid var(--lv-border);
+  border-radius: 12px;
+  box-shadow: 0 1px 2px rgba(19, 22, 27, 0.04), 0 6px 20px rgba(19, 22, 27, 0.03);
+}
+
+.lv-card-obsidian {
+  background: linear-gradient(160deg, #161a21 0%, #101318 100%);
+  border: 1px solid #282f3a;
+  border-radius: 12px;
+  color: #f4f1ea;
+  box-shadow: 0 8px 28px rgba(13, 16, 22, 0.18);
+}
+
+.lv-input {
+  width: 100%;
+  padding: 0.625rem 0.875rem;
+  background-color: #ffffff;
+  border: 1px solid var(--lv-border-strong);
+  border-radius: 8px;
+  color: var(--lv-ink);
+  font-size: 0.9375rem;
+  transition: border-color 150ms ease, box-shadow 150ms ease;
+}
+
+.lv-input:focus {
+  outline: none;
+  border-color: var(--lv-brass);
+  box-shadow: 0 0 0 3px rgba(168, 123, 36, 0.14);
+}
+
+/* Clean executive print styling for Heir Dossiers & Shamir Share Cards */
+@media print {
+  body {
+    background: #ffffff !important;
+    color: #000000 !important;
+  }
+  .no-print {
+    display: none !important;
+  }
+  .lv-card,
+  .lv-card-obsidian {
+    box-shadow: none !important;
+    break-inside: avoid;
+  }
+}
